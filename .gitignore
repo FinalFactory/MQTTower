@@ -1,0 +1,24 @@
+## Build
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+*.user
+*.userosscache
+*.suo
+*.cache
+*.ilk
+*.pdb
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+## IDE
+.vs/
+.idea/
+*.rsuser
+*.DotSettings.user
+
+## OS
+Thumbs.db
+Desktop.ini
