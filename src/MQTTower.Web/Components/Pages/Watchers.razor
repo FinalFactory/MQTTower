@@ -1,0 +1,92 @@
+@page "/watchers"
+@rendermode InteractiveServer
+@inject IWatcherService WatcherService
+@inject IDialogService DialogService
+
+<PageTitle>Watchers</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+    <MudText Typo="Typo.h4">Topic watchers</MudText>
+    <AuthorizeView Roles="Admin">
+        <Authorized>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateAsync">Add watcher</MudButton>
+        </Authorized>
+    </AuthorizeView>
+</MudStack>
+
+<MudTable Items="@_items" Hover="true" Dense="true" Loading="_loading">
+    <HeaderContent>
+        <MudTh>Name</MudTh>
+        <MudTh>Topic</MudTh>
+        <MudTh>Condition</MudTh>
+        <MudTh>Enabled</MudTh>
+        <MudTh Style="text-align:right">Actions</MudTh>
+    </HeaderContent>
+    <RowTemplate Context="row">
+        <MudTd>@row.Name</MudTd>
+        <MudTd Style="word-break:break-all">@row.TopicPattern</MudTd>
+        <MudTd>@row.Condition</MudTd>
+        <MudTd>@(row.Enabled ? "yes" : "no")</MudTd>
+        <MudTd Style="text-align:right">
+            <AuthorizeView Roles="Admin">
+                <Authorized>
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" OnClick="@(() => EditAsync(row))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => DeleteAsync(row.Id))" />
+                </Authorized>
+            </AuthorizeView>
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+@code {
+    private List<TopicWatcher> _items = new();
+    private bool _loading;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _items = (await WatcherService.ListAsync().ConfigureAwait(false)).ToList();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OpenCreateAsync()
+    {
+        var w = new TopicWatcher { Name = "New watcher", TopicPattern = "mqttower/#", Condition = string.Empty };
+        await ShowAsync("New watcher", w);
+    }
+
+    private async Task EditAsync(TopicWatcher w) => await ShowAsync("Edit watcher", w);
+
+    private async Task ShowAsync(string title, TopicWatcher w)
+    {
+        var p = new DialogParameters { [nameof(WatcherEditDialog.Initial)] = w };
+        var d = await DialogService.ShowAsync<WatcherEditDialog>(title, p);
+        var r = await d.Result;
+        if (!r.Canceled)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task DeleteAsync(Guid id)
+    {
+        var p = new DialogParameters { [nameof(ConfirmDialog.Message)] = "Delete this watcher?" };
+        var d = await DialogService.ShowAsync<ConfirmDialog>("Delete", p);
+        var r = await d.Result;
+        if (r.Canceled || r.Data is not true)
+        {
+            return;
+        }
+
+        await WatcherService.DeleteAsync(id).ConfigureAwait(false);
+        await LoadAsync();
+    }
+}

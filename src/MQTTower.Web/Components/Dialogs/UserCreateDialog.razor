@@ -1,0 +1,33 @@
+@inject IUserService Users
+
+<MudDialog>
+    <DialogContent>
+        <MudTextField @bind-Value="_name" Label="Username" Variant="Variant.Outlined" Class="mb-2" />
+        <MudTextField @bind-Value="_password" Label="Password" Variant="Variant.Outlined" InputType="InputType.Password" Class="mb-2" />
+        <MudSelect T="AppUserRole" @bind-Value="_role" Label="Role" Variant="Variant.Outlined">
+            <MudSelectItem Value="AppUserRole.Admin">Admin</MudSelectItem>
+            <MudSelectItem Value="AppUserRole.Viewer">Viewer</MudSelectItem>
+        </MudSelect>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">Create</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    private string _name = string.Empty;
+    private string _password = string.Empty;
+    private AppUserRole _role = AppUserRole.Viewer;
+
+    private void Cancel() => MudDialog.Close(DialogResult.Cancel());
+
+    private async Task SaveAsync()
+    {
+        await Users.CreateAsync(_name, _password, _role).ConfigureAwait(false);
+        MudDialog.Close(DialogResult.Ok(true));
+    }
+}

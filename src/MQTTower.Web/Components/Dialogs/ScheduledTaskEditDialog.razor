@@ -1,0 +1,50 @@
+@inject ISchedulerService Scheduler
+
+<MudDialog>
+    <DialogContent>
+        <MudTextField @bind-Value="_task.Name" Label="Name" Variant="Variant.Outlined" Class="mb-2" />
+        <MudTextField @bind-Value="_task.CronExpression" Label="Cron (standard 5-field)" Variant="Variant.Outlined" Class="mb-2" HelperText="Example: 0 * * * *" />
+        <MudTextField @bind-Value="_task.Topic" Label="Topic" Variant="Variant.Outlined" Class="mb-2" />
+        <MudTextField @bind-Value="_task.Payload" Label="Payload" Lines="3" Variant="Variant.Outlined" Class="mb-2" />
+        <MudNumericField T="int" @bind-Value="_task.Qos" Label="QoS" Variant="Variant.Outlined" Class="mb-2" Min="0" Max="2" />
+        <MudSwitch @bind-Value="_task.Retain" Color="Color.Primary" Label="Retain" Class="mb-2" />
+        <MudSwitch @bind-Value="_task.Enabled" Color="Color.Primary" Label="Enabled" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter]
+    public ScheduledTask Initial { get; set; } = new();
+
+    private ScheduledTask _task = new();
+
+    protected override void OnParametersSet()
+    {
+        _task = new ScheduledTask
+        {
+            Id = Initial.Id,
+            Name = Initial.Name,
+            CronExpression = Initial.CronExpression,
+            Topic = Initial.Topic,
+            Payload = Initial.Payload,
+            Qos = Initial.Qos,
+            Retain = Initial.Retain,
+            Enabled = Initial.Enabled,
+        };
+    }
+
+    private void Cancel() => MudDialog.Close(DialogResult.Cancel());
+
+    private async Task SaveAsync()
+    {
+        await Scheduler.UpsertAsync(_task).ConfigureAwait(false);
+        MudDialog.Close(DialogResult.Ok(true));
+    }
+}

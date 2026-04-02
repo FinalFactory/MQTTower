@@ -1,0 +1,44 @@
+@page "/backup"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = nameof(AppUserRole.Admin))]
+@inject IBackupService BackupService
+@inject ISnackbar Snackbar
+
+<PageTitle>Backup</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Backup &amp; restore</MudText>
+
+<MudStack Spacing="3">
+    <MudPaper Class="pa-4 mqtt-chart-card" Elevation="2">
+        <MudText Typo="Typo.subtitle1" Class="mb-2">Download archive</MudText>
+        <MudText Typo="Typo.caption" Class="mqtt-muted mb-2">SQLite database and mosquitto.conf (if present).</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/api/backup/download" Target="_blank">Download ZIP</MudButton>
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mqtt-chart-card" Elevation="2">
+        <MudText Typo="Typo.subtitle1" Class="mb-2">Restore from ZIP</MudText>
+        <InputFile OnChange="RestoreAsync" accept=".zip" />
+    </MudPaper>
+</MudStack>
+
+@code {
+    private async Task RestoreAsync(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await using var stream = file.OpenReadStream(maxAllowedSize: 50_000_000);
+            await BackupService.RestoreFromArchiveAsync(stream).ConfigureAwait(false);
+            Snackbar.Add("Restore complete. Restart the app if needed.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+}

@@ -1,0 +1,87 @@
+@page "/settings"
+@rendermode InteractiveServer
+@inject IOptionsSnapshot<MqttTowerOptions> TowerOptions
+@inject IUserService Users
+@inject IDialogService DialogService
+
+<PageTitle>Settings</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Settings</MudText>
+
+<MudPaper Class="pa-4 mqtt-chart-card mb-4" Elevation="2">
+    <MudText Typo="Typo.subtitle1" Class="mb-2">Broker</MudText>
+    <MudSimpleTable Dense="true">
+        <tbody>
+            <tr><td>Host</td><td>@_o.BrokerHost</td></tr>
+            <tr><td>Port</td><td>@_o.BrokerPort</td></tr>
+            <tr><td>Control topic</td><td>@_o.ControlTopic</td></tr>
+            <tr><td>Metrics retention (days)</td><td>@_o.MetricsRetentionDays</td></tr>
+        </tbody>
+    </MudSimpleTable>
+    <MudText Typo="Typo.caption" Class="mqtt-muted mt-2">Override via environment variables or appsettings.json (requires restart).</MudText>
+</MudPaper>
+
+<AuthorizeView Roles="Admin">
+    <Authorized>
+        <MudPaper Class="pa-4 mqtt-chart-card" Elevation="2">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-2">
+                <MudText Typo="Typo.subtitle1">Web users</MudText>
+                <MudButton Color="Color.Primary" Size="Size.Small" StartIcon="@Icons.Material.Filled.PersonAdd" OnClick="AddUserAsync">Add user</MudButton>
+            </MudStack>
+            <MudTable Items="@_users" Dense="true">
+                <HeaderContent>
+                    <MudTh>Username</MudTh>
+                    <MudTh>Role</MudTh>
+                    <MudTh Style="text-align:right">Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate Context="u">
+                    <MudTd>@u.UserName</MudTd>
+                    <MudTd>@u.Role</MudTd>
+                    <MudTd Style="text-align:right">
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => DeleteUserAsync(u.Id))" />
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private MqttTowerOptions _o = new();
+    private List<AppUser> _users = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _o = TowerOptions.Value;
+        await ReloadUsersAsync();
+    }
+
+    private async Task ReloadUsersAsync()
+    {
+        _users = (await Users.ListAsync().ConfigureAwait(false)).ToList();
+    }
+
+    private async Task AddUserAsync()
+    {
+        var d = await DialogService.ShowAsync<UserCreateDialog>("New user");
+        var r = await d.Result;
+        if (!r.Canceled)
+        {
+            await ReloadUsersAsync();
+        }
+    }
+
+    private async Task DeleteUserAsync(Guid id)
+    {
+        var p = new DialogParameters { [nameof(ConfirmDialog.Message)] = "Delete this user?" };
+        var d = await DialogService.ShowAsync<ConfirmDialog>("Delete user", p);
+        var r = await d.Result;
+        if (r.Canceled || r.Data is not true)
+        {
+            return;
+        }
+
+        await Users.DeleteAsync(id).ConfigureAwait(false);
+        await ReloadUsersAsync();
+    }
+}

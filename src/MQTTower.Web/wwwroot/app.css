@@ -1,0 +1,65 @@
+html, body {
+    background: #0D1117;
+}
+
+.mqtt-appbar {
+    background: #0D1117 !important;
+    border-bottom: 1px solid #21262D;
+}
+
+.mqtt-wordmark {
+    letter-spacing: 0.04em;
+}
+
+.mqtt-search {
+    max-width: 520px;
+}
+
+.mqtt-drawer {
+    background: #0D1117 !important;
+    border-right: 1px solid #21262D !important;
+}
+
+.mqtt-drawer-header {
+    border-bottom: 1px solid #21262D;
+}
+
+.mqtt-main {
+    background: #0D1117;
+    min-height: calc(100vh - 64px);
+}
+
+.mqtt-nav .mud-nav-link.active {
+    background: linear-gradient(90deg, rgba(15,241,151,0.25), rgba(15,241,151,0.05));
+    border-radius: 10px;
+}
+
+.mqtt-muted {
+    color: #8B949E !important;
+}
+
+.mqtt-stat-card {
+    border-radius: 16px;
+    border: 1px solid #21262D;
+    position: relative;
+    overflow: hidden;
+}
+
+.mqtt-stat-green {
+    background: linear-gradient(135deg, #0A3A2A 0%, #0D4F4F 55%, #063D35 100%);
+}
+
+.mqtt-stat-cyan {
+    background: linear-gradient(135deg, #053845 0%, #0A5F6A 55%, #063544 100%);
+}
+
+.mqtt-stat-value {
+    color: #E6EDF3 !important;
+    font-weight: 700;
+}
+
+.mqtt-chart-card {
+    background: #161B22 !important;
+    border: 1px solid #21262D;
+    border-radius: 16px;
+}

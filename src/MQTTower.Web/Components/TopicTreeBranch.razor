@@ -1,0 +1,25 @@
+@foreach (var node in Nodes)
+{
+    <MudPaper Class="pa-2 mb-1 mqtt-topic-node" Outlined="true" Elevation="0">
+        <MudStack Spacing="1">
+            <MudText Typo="Typo.subtitle2" Style="color: var(--mud-palette-primary);">@node.FullTopic</MudText>
+            <MudStack Row="true" Spacing="2">
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@node.MessageCount msgs</MudChip>
+                <MudText Typo="Typo.caption" Class="mqtt-muted">@node.LastUpdated.LocalDateTime</MudText>
+            </MudStack>
+            @if (!string.IsNullOrEmpty(node.LastPayloadPreview))
+            {
+                <MudText Typo="Typo.caption" Class="mqtt-muted">@node.LastPayloadPreview</MudText>
+            }
+            @if (node.Children.Count > 0)
+            {
+                <TopicTreeBranch Nodes="@node.Children" />
+            }
+        </MudStack>
+    </MudPaper>
+}
+
+@code {
+    [Parameter]
+    public IReadOnlyList<TopicTreeNode> Nodes { get; set; } = Array.Empty<TopicTreeNode>();
+}

@@ -1,0 +1,56 @@
+@page "/audit"
+@rendermode InteractiveServer
+@inject IAuditLog Audit
+
+<PageTitle>Audit Log</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Audit log</MudText>
+
+<MudStack Row="true" Spacing="2" Class="mb-4">
+    <MudDatePicker @bind-Date="_from" Label="From" Variant="Variant.Outlined" />
+    <MudDatePicker @bind-Date="_to" Label="To" Variant="Variant.Outlined" />
+    <MudTextField @bind-Value="_userFilter" Label="User" Variant="Variant.Outlined" />
+    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="LoadAsync">Apply</MudButton>
+</MudStack>
+
+<MudTable Items="@_items" Hover="true" Dense="true" Loading="_loading">
+    <HeaderContent>
+        <MudTh>Time</MudTh>
+        <MudTh>User</MudTh>
+        <MudTh>Action</MudTh>
+        <MudTh>Entity</MudTh>
+        <MudTh>Details</MudTh>
+    </HeaderContent>
+    <RowTemplate Context="row">
+        <MudTd>@row.Timestamp.LocalDateTime</MudTd>
+        <MudTd>@row.UserName</MudTd>
+        <MudTd>@row.Action</MudTd>
+        <MudTd>@row.EntityType / @row.EntityName</MudTd>
+        <MudTd Style="max-width:240px;word-break:break-word">@row.Details</MudTd>
+    </RowTemplate>
+</MudTable>
+
+@code {
+    private List<AuditEntry> _items = new();
+    private bool _loading;
+    private DateTime? _from = DateTime.UtcNow.Date.AddDays(-7);
+    private DateTime? _to = DateTime.UtcNow.Date.AddDays(1);
+    private string _userFilter = string.Empty;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            var from = _from.HasValue ? new DateTimeOffset(_from.Value, TimeSpan.Zero) : DateTimeOffset.UtcNow.AddDays(-7);
+            var to = _to.HasValue ? new DateTimeOffset(_to.Value, TimeSpan.Zero) : DateTimeOffset.UtcNow;
+            _items = (await Audit.QueryAsync(from, to, string.IsNullOrWhiteSpace(_userFilter) ? null : _userFilter, 0, 200).ConfigureAwait(false)).ToList();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

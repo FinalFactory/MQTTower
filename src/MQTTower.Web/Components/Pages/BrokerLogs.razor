@@ -1,0 +1,28 @@
+@page "/broker-logs"
+@rendermode InteractiveServer
+@inject IBrokerLogReader Logs
+
+<PageTitle>Broker Logs</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+    <MudText Typo="Typo.h4">Broker logs</MudText>
+    <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync">Refresh</MudButton>
+</MudStack>
+
+<MudPaper Class="pa-2 mqtt-chart-card" Elevation="2" Style="max-height:70vh;overflow:auto;font-family:ui-monospace,monospace;font-size:0.85rem;">
+    @foreach (var line in _lines)
+    {
+        <div>@line</div>
+    }
+</MudPaper>
+
+@code {
+    private IReadOnlyList<string> _lines = Array.Empty<string>();
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _lines = await Logs.GetRecentLinesAsync(500).ConfigureAwait(false);
+    }
+}

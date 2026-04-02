@@ -1,0 +1,57 @@
+@page "/login"
+@attribute [AllowAnonymous]
+@rendermode InteractiveServer
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@inject IHttpContextAccessor HttpContextAccessor
+@inject IUserService Users
+@inject NavigationManager Nav
+
+<PageTitle>Login</PageTitle>
+
+<MudPaper Class="pa-8 ma-auto" Style="max-width:420px;margin-top:10vh" Elevation="8">
+    <MudText Typo="Typo.h5" Class="mb-4">MQTTower</MudText>
+    <MudTextField @bind-Value="_user" Label="User" Variant="Variant.Outlined" Class="mb-2" />
+    <MudTextField @bind-Value="_pass" Label="Password" Variant="Variant.Outlined" InputType="InputType.Password" Class="mb-4" />
+    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="LoginAsync" FullWidth="true">Sign in</MudButton>
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">@_error</MudAlert>
+    }
+</MudPaper>
+
+@code {
+    private string _user = "admin";
+    private string _pass = string.Empty;
+    private string? _error;
+
+    private async Task LoginAsync()
+    {
+        _error = null;
+        var http = HttpContextAccessor.HttpContext;
+        if (http is null)
+        {
+            _error = "No HTTP context.";
+            return;
+        }
+
+        var user = await Users.AuthenticateAsync(_user, _pass).ConfigureAwait(false);
+        if (user is null)
+        {
+            _error = "Invalid credentials.";
+            return;
+        }
+
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.Name, user.UserName),
+            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new(ClaimTypes.Role, user.Role.ToString()),
+        };
+
+        var id = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+        await http.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(id)).ConfigureAwait(false);
+        Nav.NavigateTo("/", forceLoad: true);
+    }
+}

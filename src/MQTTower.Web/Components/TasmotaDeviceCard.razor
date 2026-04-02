@@ -1,0 +1,37 @@
+@using MQTTower.Core.Tasmota
+
+<MudCard Class="pa-4 mqtt-chart-card" Elevation="4">
+    <MudText Typo="Typo.h6" Class="mb-2">@Title</MudText>
+    @if (Telemetry.PowerWatts is { } w)
+    {
+        <MudText Typo="Typo.h4" Style="color: var(--mud-palette-primary);">@w.ToString("0") W</MudText>
+    }
+    @if (Telemetry.Voltage is { } v)
+    {
+        <MudText Typo="Typo.body2">@v.ToString("0.0") V</MudText>
+    }
+    @if (Telemetry.Current is { } a)
+    {
+        <MudText Typo="Typo.body2">@a.ToString("0.00") A</MudText>
+    }
+    @if (Telemetry.EnergyKwh is { } kwh)
+    {
+        <MudText Typo="Typo.body2">@kwh.ToString("0.###") kWh</MudText>
+    }
+    @if (Telemetry.Temperature is { } t)
+    {
+        <MudText Typo="Typo.body2">@t.ToString("0.0") °C</MudText>
+    }
+    @if (Telemetry.Humidity is { } h)
+    {
+        <MudText Typo="Typo.body2">@h.ToString("0") % RH</MudText>
+    }
+</MudCard>
+
+@code {
+    [Parameter]
+    public string Title { get; set; } = "Tasmota";
+
+    [Parameter]
+    public TasmotaTelemetry Telemetry { get; set; } = new();
+}

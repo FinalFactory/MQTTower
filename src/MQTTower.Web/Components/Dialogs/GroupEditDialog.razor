@@ -1,0 +1,38 @@
+@using MQTTower.Core.Interfaces
+@inject IDynSecService DynSec
+
+<MudDialog>
+    <DialogContent>
+        <MudTextField @bind-Value="_name" Label="Group name" Variant="Variant.Outlined" Class="mb-2" Required="true" />
+        <MudTextField @bind-Value="_description" Label="Description" Variant="Variant.Outlined" Class="mb-2" />
+        <MudTextField @bind-Value="_rolesCsv" Label="Roles (comma-separated)" Variant="Variant.Outlined" Class="mb-2" HelperText="Matches existing role names" />
+        <MudTextField @bind-Value="_clientsCsv" Label="Clients (comma-separated)" Variant="Variant.Outlined" HelperText="Matches MQTT usernames" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">Create</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    private string _name = string.Empty;
+    private string _description = string.Empty;
+    private string _rolesCsv = string.Empty;
+    private string _clientsCsv = string.Empty;
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task SaveAsync()
+    {
+        var roles = Split(_rolesCsv);
+        var clients = Split(_clientsCsv);
+        await DynSec.CreateGroupAsync(_name, _description, roles, clients).ConfigureAwait(false);
+        MudDialog.Close(DialogResult.Ok(true));
+    }
+
+    private static List<string> Split(string csv) =>
+        csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Where(s => s.Length > 0).ToList();
+}

@@ -1,0 +1,92 @@
+@page "/notifications"
+@rendermode InteractiveServer
+@inject INotificationRouter Router
+@inject IDialogService DialogService
+
+<PageTitle>Notifications</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+    <MudText Typo="Typo.h4">Notification rules</MudText>
+    <AuthorizeView Roles="Admin">
+        <Authorized>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateAsync">Add rule</MudButton>
+        </Authorized>
+    </AuthorizeView>
+</MudStack>
+
+<MudTable Items="@_items" Hover="true" Dense="true" Loading="_loading">
+    <HeaderContent>
+        <MudTh>Name</MudTh>
+        <MudTh>Trigger</MudTh>
+        <MudTh>Channel</MudTh>
+        <MudTh>Enabled</MudTh>
+        <MudTh Style="text-align:right">Actions</MudTh>
+    </HeaderContent>
+    <RowTemplate Context="row">
+        <MudTd>@row.Name</MudTd>
+        <MudTd>@row.TriggerType</MudTd>
+        <MudTd>@row.Channel</MudTd>
+        <MudTd>@(row.Enabled ? "yes" : "no")</MudTd>
+        <MudTd Style="text-align:right">
+            <AuthorizeView Roles="Admin">
+                <Authorized>
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" OnClick="@(() => EditAsync(row))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => DeleteAsync(row.Id))" />
+                </Authorized>
+            </AuthorizeView>
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+@code {
+    private List<NotificationRule> _items = new();
+    private bool _loading;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _items = (await Router.ListRulesAsync().ConfigureAwait(false)).ToList();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OpenCreateAsync()
+    {
+        var r = new NotificationRule { Name = "Rule", TriggerType = "watcher", Channel = "ntfy" };
+        await ShowAsync("New rule", r);
+    }
+
+    private async Task EditAsync(NotificationRule r) => await ShowAsync("Edit rule", r);
+
+    private async Task ShowAsync(string title, NotificationRule r)
+    {
+        var p = new DialogParameters { [nameof(NotificationRuleEditDialog.Initial)] = r };
+        var d = await DialogService.ShowAsync<NotificationRuleEditDialog>(title, p);
+        var res = await d.Result;
+        if (!res.Canceled)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task DeleteAsync(Guid id)
+    {
+        var p = new DialogParameters { [nameof(ConfirmDialog.Message)] = "Delete this rule?" };
+        var d = await DialogService.ShowAsync<ConfirmDialog>("Delete", p);
+        var r = await d.Result;
+        if (r.Canceled || r.Data is not true)
+        {
+            return;
+        }
+
+        await Router.DeleteRuleAsync(id).ConfigureAwait(false);
+        await LoadAsync();
+    }
+}

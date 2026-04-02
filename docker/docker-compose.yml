@@ -1,0 +1,41 @@
+services:
+  mqttower:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: mqttower/mqttower:local
+    container_name: mqttower
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      MQTTOWER_ADMIN_USER: admin
+      MQTTOWER_ADMIN_PASS: changeme
+      ConnectionStrings__Default: Data Source=/data/mqttower/mqttower.db
+      MQTTower__DatabasePath: Data Source=/data/mqttower/mqttower.db
+      MQTTower__BrokerHost: mosquitto
+      MQTTower__BrokerPort: 1883
+      MQTTower__MosquittoConfigPath: /mosquitto/config/mosquitto.conf
+      MQTTower__MosquittoLogPath: /mosquitto/log/mosquitto.log
+    volumes:
+      - mqttower_data:/data
+      - mosquitto_logs:/mosquitto/log
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    depends_on:
+      - mosquitto
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: mqttower-mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mqttower_data:/mosquitto/data
+      - mosquitto_logs:/mosquitto/log
+
+volumes:
+  mqttower_data:
+  mosquitto_logs:

@@ -1,0 +1,58 @@
+@using MQTTower.Core.Interfaces
+@inject IDynSecService DynSec
+
+<MudDialog>
+    <DialogContent>
+        <MudTextField @bind-Value="_name" Label="Role name" Variant="Variant.Outlined" Class="mb-2" Required="true" />
+        <MudTextField @bind-Value="_description" Label="Description" Variant="Variant.Outlined" Class="mb-2" />
+        <MudText Typo="Typo.subtitle2" Class="mb-2">ACL entries</MudText>
+        @for (var i = 0; i < _acls.Count; i++)
+        {
+            var idx = i;
+            <MudPaper Class="pa-2 mb-2" Outlined="true">
+                <MudTextField @bind-Value="_acls[idx].TopicPattern" Label="Topic pattern" Variant="Variant.Outlined" Class="mb-2" />
+                <MudSelect T="AclType" @bind-Value="_acls[idx].AclType" Label="Type" Variant="Variant.Outlined" Class="mb-2">
+                    @foreach (var t in Enum.GetValues<AclType>())
+                    {
+                        <MudSelectItem Value="@t">@t</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudNumericField T="int" @bind-Value="_acls[idx].Priority" Label="Priority" Variant="Variant.Outlined" Class="mb-2" />
+                <MudSwitch @bind-Value="_acls[idx].Allow" Color="Color.Primary" Label="Allow" Class="mb-2" />
+                <MudButton Size="Size.Small" OnClick="@(() => RemoveAcl(idx))">Remove</MudButton>
+            </MudPaper>
+        }
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Add" OnClick="AddAcl">Add ACL</MudButton>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">Create</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    private string _name = string.Empty;
+    private string _description = string.Empty;
+    private List<AclEntry> _acls = new() { new() { TopicPattern = "#", AclType = AclType.PublishSubscribe, Allow = true } };
+
+    private void AddAcl() => _acls.Add(new AclEntry { TopicPattern = "#", AclType = AclType.Publish, Allow = true });
+
+    private void RemoveAcl(int index)
+    {
+        if (index >= 0 && index < _acls.Count)
+        {
+            _acls.RemoveAt(index);
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task SaveAsync()
+    {
+        await DynSec.CreateRoleAsync(_name, _description, _acls).ConfigureAwait(false);
+        MudDialog.Close(DialogResult.Ok(true));
+    }
+}

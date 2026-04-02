@@ -1,0 +1,106 @@
+@page "/devices"
+@rendermode InteractiveServer
+@using MQTTower.Core.Tasmota
+@inject IDeviceRegistry Registry
+@inject ITasmotaParser Tasmota
+@inject IDialogService DialogService
+
+<PageTitle>Devices</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+    <MudText Typo="Typo.h4">Devices</MudText>
+    <AuthorizeView Roles="Admin">
+        <Authorized>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateAsync">Register device</MudButton>
+        </Authorized>
+    </AuthorizeView>
+</MudStack>
+
+<MudTable Items="@_items" Hover="true" Dense="true" Loading="_loading">
+    <HeaderContent>
+        <MudTh>Name</MudTh>
+        <MudTh>Type</MudTh>
+        <MudTh>Location</MudTh>
+        <MudTh>Heartbeat (s)</MudTh>
+        <MudTh Style="text-align:right">Actions</MudTh>
+    </HeaderContent>
+    <RowTemplate Context="row">
+        <MudTd>@row.Name</MudTd>
+        <MudTd>@row.Type</MudTd>
+        <MudTd>@row.Location</MudTd>
+        <MudTd>@row.ExpectedHeartbeatSeconds</MudTd>
+        <MudTd Style="text-align:right">
+            <AuthorizeView Roles="Admin">
+                <Authorized>
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" OnClick="@(() => EditAsync(row))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => DeleteAsync(row.Id))" />
+                </Authorized>
+            </AuthorizeView>
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+@if (_sampleTasmota.PowerWatts is not null || _sampleTasmota.Temperature is not null)
+{
+    <MudText Typo="Typo.h6" Class="mt-6 mb-2">Tasmota preview</MudText>
+    <TasmotaDeviceCard Title="Sample Tasmota telemetry" Telemetry="@_sampleTasmota" />
+}
+
+@code {
+    private List<Device> _items = new();
+    private bool _loading;
+    private TasmotaTelemetry _sampleTasmota = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        const string sample = """{"ENERGY":{"Power":120.5,"Voltage":230.1,"Current":0.52,"Total":12.3},"AM2301":{"Temperature":21.2,"Humidity":48}}""";
+        Tasmota.TryParse("tele/foo/SENSOR", sample, out _sampleTasmota);
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _items = (await Registry.ListAsync().ConfigureAwait(false)).ToList();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OpenCreateAsync()
+    {
+        var d = new Device { Name = "New device", Type = "Generic", ExpectedHeartbeatSeconds = 300 };
+        await ShowAsync("Register device", d);
+    }
+
+    private async Task EditAsync(Device d) => await ShowAsync("Edit device", d);
+
+    private async Task ShowAsync(string title, Device d)
+    {
+        var p = new DialogParameters { [nameof(DeviceEditDialog.Initial)] = d };
+        var dialog = await DialogService.ShowAsync<DeviceEditDialog>(title, p);
+        var r = await dialog.Result;
+        if (!r.Canceled)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task DeleteAsync(Guid id)
+    {
+        var p = new DialogParameters { [nameof(ConfirmDialog.Message)] = "Delete this device?" };
+        var d = await DialogService.ShowAsync<ConfirmDialog>("Delete", p);
+        var r = await d.Result;
+        if (r.Canceled || r.Data is not true)
+        {
+            return;
+        }
+
+        await Registry.DeleteAsync(id).ConfigureAwait(false);
+        await LoadAsync();
+    }
+}

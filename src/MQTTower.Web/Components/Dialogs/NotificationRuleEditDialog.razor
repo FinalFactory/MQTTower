@@ -1,0 +1,50 @@
+@inject INotificationRouter Router
+
+<MudDialog>
+    <DialogContent>
+        <MudTextField @bind-Value="_r.Name" Label="Name" Variant="Variant.Outlined" Class="mb-2" />
+        <MudTextField @bind-Value="_r.TriggerType" Label="Trigger type" Variant="Variant.Outlined" Class="mb-2" HelperText="e.g. watcher, device_offline" />
+        <MudSelect T="string" @bind-Value="_r.Channel" Label="Channel" Variant="Variant.Outlined" Class="mb-2">
+            <MudSelectItem Value="@("ntfy")">ntfy</MudSelectItem>
+            <MudSelectItem Value="@("webhook")">webhook</MudSelectItem>
+            <MudSelectItem Value="@("smtp")">smtp</MudSelectItem>
+        </MudSelect>
+        <MudTextField @bind-Value="_r.ConfigJson" Label="Config JSON" Lines="4" Variant="Variant.Outlined" Class="mb-2" />
+        <MudSwitch @bind-Value="_r.Enabled" Color="Color.Primary" Label="Enabled" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter]
+    public NotificationRule Initial { get; set; } = new();
+
+    private NotificationRule _r = new();
+
+    protected override void OnParametersSet()
+    {
+        _r = new NotificationRule
+        {
+            Id = Initial.Id,
+            Name = Initial.Name,
+            TriggerType = Initial.TriggerType,
+            ConfigJson = string.IsNullOrEmpty(Initial.ConfigJson) ? "{}" : Initial.ConfigJson,
+            Channel = string.IsNullOrEmpty(Initial.Channel) ? "ntfy" : Initial.Channel,
+            Enabled = Initial.Enabled,
+        };
+    }
+
+    private void Cancel() => MudDialog.Close(DialogResult.Cancel());
+
+    private async Task SaveAsync()
+    {
+        await Router.UpsertRuleAsync(_r).ConfigureAwait(false);
+        MudDialog.Close(DialogResult.Ok(true));
+    }
+}

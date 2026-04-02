@@ -1,0 +1,52 @@
+@inject IDeviceRegistry Registry
+
+<MudDialog>
+    <DialogContent>
+        <MudTextField @bind-Value="_d.Name" Label="Name" Variant="Variant.Outlined" Class="mb-2" />
+        <MudTextField @bind-Value="_d.Type" Label="Type" Variant="Variant.Outlined" Class="mb-2" HelperText="e.g. Tasmota" />
+        <MudTextField @bind-Value="_d.Location" Label="Location" Variant="Variant.Outlined" Class="mb-2" />
+        <MudTextField @bind-Value="_d.Firmware" Label="Firmware" Variant="Variant.Outlined" Class="mb-2" />
+        <MudTextField @bind-Value="_d.IpAddress" Label="IP" Variant="Variant.Outlined" Class="mb-2" />
+        <MudTextField @bind-Value="_d.GroupName" Label="Group" Variant="Variant.Outlined" Class="mb-2" />
+        <MudNumericField T="int" @bind-Value="_d.ExpectedHeartbeatSeconds" Label="Heartbeat (s)" Variant="Variant.Outlined" Class="mb-2" />
+        <MudTextField @bind-Value="_d.Notes" Label="Notes" Lines="2" Variant="Variant.Outlined" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter]
+    public Device Initial { get; set; } = new();
+
+    private Device _d = new();
+
+    protected override void OnParametersSet()
+    {
+        _d = new Device
+        {
+            Id = Initial.Id,
+            Name = Initial.Name,
+            Type = Initial.Type,
+            Location = Initial.Location,
+            Firmware = Initial.Firmware,
+            IpAddress = Initial.IpAddress,
+            Notes = Initial.Notes,
+            GroupName = Initial.GroupName,
+            ExpectedHeartbeatSeconds = Initial.ExpectedHeartbeatSeconds > 0 ? Initial.ExpectedHeartbeatSeconds : 300,
+        };
+    }
+
+    private void Cancel() => MudDialog.Close(DialogResult.Cancel());
+
+    private async Task SaveAsync()
+    {
+        await Registry.AddOrUpdateAsync(_d).ConfigureAwait(false);
+        MudDialog.Close(DialogResult.Ok(true));
+    }
+}

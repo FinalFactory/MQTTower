@@ -1,0 +1,99 @@
+@page "/groups"
+@rendermode InteractiveServer
+@inject IDynSecService DynSec
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Groups</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+    <MudText Typo="Typo.h4">Groups</MudText>
+    <AuthorizeView Roles="Admin">
+        <Authorized>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateAsync">
+                Add group
+            </MudButton>
+        </Authorized>
+    </AuthorizeView>
+</MudStack>
+
+<MudTable Items="@FilteredItems" Hover="true" Dense="true" Loading="_loading">
+    <ToolBarContent>
+        <MudTextField @bind-Value="_search" Placeholder="Search" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" />
+    </ToolBarContent>
+    <HeaderContent>
+        <MudTh>Name</MudTh>
+        <MudTh Style="text-align:right">Actions</MudTh>
+    </HeaderContent>
+    <RowTemplate Context="row">
+        <MudTd DataLabel="Name">@row.Name</MudTd>
+        <MudTd DataLabel="Actions" Style="text-align:right">
+            <AuthorizeView Roles="Admin">
+                <Authorized>
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" aria-label="delete" OnClick="@(() => DeleteAsync(row.Name))" />
+                </Authorized>
+            </AuthorizeView>
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+@code {
+    private List<MqttGroup> _items = new();
+    private bool _loading;
+    private string _search = string.Empty;
+
+    private IEnumerable<MqttGroup> FilteredItems =>
+        string.IsNullOrWhiteSpace(_search)
+            ? _items
+            : _items.Where(x => x.Name.Contains(_search, StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _items = (await DynSec.ListGroupsAsync().ConfigureAwait(false)).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OpenCreateAsync()
+    {
+        var d = await DialogService.ShowAsync<GroupEditDialog>("New group");
+        var r = await d.Result;
+        if (!r.Canceled)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task DeleteAsync(string name)
+    {
+        var p = new DialogParameters { [nameof(ConfirmDialog.Message)] = $"Delete group {name}?" };
+        var d = await DialogService.ShowAsync<ConfirmDialog>("Delete group", p);
+        var r = await d.Result;
+        if (r.Canceled || r.Data is not true)
+        {
+            return;
+        }
+
+        try
+        {
+            await DynSec.DeleteGroupAsync(name).ConfigureAwait(false);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+}

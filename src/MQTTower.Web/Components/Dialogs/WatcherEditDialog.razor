@@ -1,0 +1,47 @@
+@inject IWatcherService WatcherService
+
+<MudDialog>
+    <DialogContent>
+        <MudTextField @bind-Value="_w.Name" Label="Name" Variant="Variant.Outlined" Class="mb-2" />
+        <MudTextField @bind-Value="_w.TopicPattern" Label="Topic pattern" Variant="Variant.Outlined" Class="mb-2" />
+        <MudTextField @bind-Value="_w.Condition" Label="Payload contains" Variant="Variant.Outlined" Class="mb-2" HelperText="Empty = any message" />
+        <MudTextField @bind-Value="_w.ActionType" Label="Action" Variant="Variant.Outlined" Class="mb-2" />
+        <MudSwitch @bind-Value="_w.Enabled" Color="Color.Primary" Label="Enabled" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter]
+    public TopicWatcher Initial { get; set; } = new();
+
+    private TopicWatcher _w = new();
+
+    protected override void OnParametersSet()
+    {
+        _w = new TopicWatcher
+        {
+            Id = Initial.Id,
+            Name = Initial.Name,
+            TopicPattern = Initial.TopicPattern,
+            Condition = Initial.Condition,
+            ActionType = string.IsNullOrEmpty(Initial.ActionType) ? "Notification" : Initial.ActionType,
+            ActionConfigJson = Initial.ActionConfigJson,
+            Enabled = Initial.Enabled,
+        };
+    }
+
+    private void Cancel() => MudDialog.Close(DialogResult.Cancel());
+
+    private async Task SaveAsync()
+    {
+        await WatcherService.UpsertAsync(_w).ConfigureAwait(false);
+        MudDialog.Close(DialogResult.Ok(true));
+    }
+}

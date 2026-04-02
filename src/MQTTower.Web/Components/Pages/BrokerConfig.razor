@@ -1,0 +1,12 @@
+@page "/broker-config"
+@rendermode InteractiveServer
+@inject IBrokerConfigStore Config
+<PageTitle>Broker Config</PageTitle>
+<MudText Typo="Typo.h4">Broker Config</MudText>
+<MudTextField @bind-Value="_text" Lines="18" Variant="Variant.Outlined" Class="mt-4" />
+<MudButton Color="Color.Primary" Class="mt-2" OnClick="SaveAsync">Save</MudButton>
+@code {
+    private string _text = string.Empty;
+    protected override async Task OnInitializedAsync() => _text = await Config.ReadAsync();
+    private async Task SaveAsync() => await Config.WriteAsync(_text);
+}

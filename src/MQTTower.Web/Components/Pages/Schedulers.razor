@@ -1,0 +1,116 @@
+@page "/schedulers"
+@rendermode InteractiveServer
+@inject ISchedulerService Scheduler
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Schedulers</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+    <MudText Typo="Typo.h4">Schedulers</MudText>
+    <AuthorizeView Roles="Admin">
+        <Authorized>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateAsync">Add task</MudButton>
+        </Authorized>
+    </AuthorizeView>
+</MudStack>
+
+<MudTable Items="@_items" Hover="true" Dense="true" Loading="_loading">
+    <HeaderContent>
+        <MudTh>Name</MudTh>
+        <MudTh>Cron</MudTh>
+        <MudTh>Topic</MudTh>
+        <MudTh>Enabled</MudTh>
+        <MudTh Style="text-align:right">Actions</MudTh>
+    </HeaderContent>
+    <RowTemplate Context="row">
+        <MudTd>@row.Name</MudTd>
+        <MudTd Style="font-family:monospace">@row.CronExpression</MudTd>
+        <MudTd Style="word-break:break-all">@row.Topic</MudTd>
+        <MudTd>
+            <AuthorizeView Roles="Admin">
+                <Authorized>
+                    <MudSwitch T="bool" Color="Color.Primary" Value="@row.Enabled" ValueChanged="@(async v => await ToggleAsync(row, v))" />
+                </Authorized>
+                <NotAuthorized>
+                    @(row.Enabled ? "on" : "off")
+                </NotAuthorized>
+            </AuthorizeView>
+        </MudTd>
+        <MudTd Style="text-align:right">
+            <AuthorizeView Roles="Admin">
+                <Authorized>
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" OnClick="@(() => EditAsync(row))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => DeleteAsync(row.Id))" />
+                </Authorized>
+            </AuthorizeView>
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+@code {
+    private List<ScheduledTask> _items = new();
+    private bool _loading;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _items = (await Scheduler.ListAsync().ConfigureAwait(false)).ToList();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OpenCreateAsync()
+    {
+        var task = new ScheduledTask { CronExpression = "0 * * * *", Topic = "mqttower/test", Payload = "{}" };
+        await ShowEditDialogAsync("New scheduled task", task);
+    }
+
+    private async Task EditAsync(ScheduledTask row) => await ShowEditDialogAsync("Edit task", row);
+
+    private async Task ShowEditDialogAsync(string title, ScheduledTask task)
+    {
+        var p = new DialogParameters { [nameof(ScheduledTaskEditDialog.Initial)] = task };
+        var d = await DialogService.ShowAsync<ScheduledTaskEditDialog>(title, p);
+        var r = await d.Result;
+        if (!r.Canceled)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task ToggleAsync(ScheduledTask row, bool enabled)
+    {
+        row.Enabled = enabled;
+        try
+        {
+            await Scheduler.UpsertAsync(row).ConfigureAwait(false);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task DeleteAsync(Guid id)
+    {
+        var p = new DialogParameters { [nameof(ConfirmDialog.Message)] = "Delete this scheduled task?" };
+        var d = await DialogService.ShowAsync<ConfirmDialog>("Delete", p);
+        var r = await d.Result;
+        if (r.Canceled || r.Data is not true)
+        {
+            return;
+        }
+
+        await Scheduler.DeleteAsync(id).ConfigureAwait(false);
+        await LoadAsync();
+    }
+}

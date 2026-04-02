@@ -1,0 +1,34 @@
+@page "/topic-explorer"
+@rendermode InteractiveServer
+@implements IDisposable
+@inject ITopicExplorerService Topics
+
+<PageTitle>Topic Explorer</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Topic explorer</MudText>
+<MudText Typo="Typo.caption" Class="mqtt-muted mb-4">Subscribes to <code>#</code> — tree updates as messages arrive.</MudText>
+
+<TopicTreeBranch Nodes="@_roots" />
+
+@code {
+    private IReadOnlyList<TopicTreeNode> _roots = Array.Empty<TopicTreeNode>();
+
+    protected override void OnInitialized()
+    {
+        Topics.Changed += OnTopicsChanged;
+        Refresh();
+    }
+
+    private void OnTopicsChanged(object? sender, EventArgs e) => InvokeAsync(() =>
+    {
+        Refresh();
+        StateHasChanged();
+    });
+
+    private void Refresh() => _roots = Topics.GetRoots();
+
+    public void Dispose()
+    {
+        Topics.Changed -= OnTopicsChanged;
+    }
+}
