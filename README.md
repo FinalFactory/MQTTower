@@ -24,7 +24,7 @@ The system has two components:
 - **Metrics & charts** — Broker stats over time (connected clients, messages, bytes).
 - **Audit log** — Track who changed what, when.
 - **Agent registration** — Shared secret or one-time tokens for secure agent enrollment.
-- **Auto-updates** — LXC installs include a daily timer that checks GitHub Releases for new versions.
+- **Updates** — LXC installs can pull new agent/web builds from GitHub Releases (host `update` command or `/usr/bin/update` in the container).
 - **mTLS** — Optional mutual TLS between dashboard and agents.
 
 ## Screenshots
@@ -38,7 +38,7 @@ The system has two components:
 On a **Proxmox VE** host, run:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/FinalFactory/MQTTower/main/deploy/mqttower.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/FinalFactory/MQTTower/main/deploy/ct/mqttower.sh)"
 ```
 
 The installer asks which mode you want:
@@ -47,15 +47,17 @@ The installer asks which mode you want:
 - **Dashboard** — MQTTower.Web only; enter the MQTT broker host (e.g. another LXC).
 - **Full stack** — Mosquitto + Agent + Dashboard in one LXC (local broker and web on `127.0.0.1`).
 
-Each mode creates a Debian LXC, installs dependencies, and sets up systemd services with daily auto-update.
+Each mode creates a Debian LXC, installs dependencies, and sets up systemd services.
 
 For **Mosquitto + agent** on a separate machine, use **Broker** mode (or **Docker Compose** below).
 
-To update an existing container later:
+To update an existing container later (on the Proxmox host):
 
 ```bash
-./mqttower.sh update <CTID>
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/FinalFactory/MQTTower/main/deploy/ct/mqttower.sh)" update <CTID>
 ```
+
+Inside the LXC you can also run `/usr/bin/update` (re-runs the GitHub release update path).
 
 ### Docker
 
