@@ -33,6 +33,12 @@ public sealed class MqttTowerOptions
     public string? SmtpFrom { get; set; }
     public string? SmtpTo { get; set; }
 
+    /// <summary>When set (e.g. full stack / Docker), seeds the default local broker with this agent HTTP URL and API key so auto-registration merges into the Local profile.</summary>
+    public string? LocalAgentUrl { get; set; }
+
+    /// <summary>API key for <see cref="LocalAgentUrl"/> (same as <c>Agent:ApiKey</c> on the co-located agent).</summary>
+    public string? LocalAgentApiKey { get; set; }
+
     /// <summary>Shared secret agents must send when calling <c>/api/agents/register</c>.</summary>
     public string? RegistrationSecret { get; set; }
 

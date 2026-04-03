@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # MQTTower Dashboard — LXC install (runs inside the container).
 # Does not install Mosquitto; set MQTTOWER_BROKER_HOST to your broker LXC IP.
-# Env: MQTTOWER_ADMIN_USER, MQTTOWER_ADMIN_PASS, MQTTOWER_REG_SECRET, MQTTOWER_BROKER_HOST, MQTTOWER_BROKER_PORT, MQTTOWER_WEB_PORT
+# Env: MQTTOWER_ADMIN_USER, MQTTOWER_ADMIN_PASS, MQTTOWER_REG_SECRET, MQTTOWER_BROKER_HOST, MQTTOWER_BROKER_PORT, MQTTOWER_WEB_PORT,
+#      MQTTOWER_MQTT_USER, MQTTOWER_MQTT_PASS, optional MQTTOWER_LOCAL_AGENT_URL, MQTTOWER_LOCAL_AGENT_API_KEY (full stack)
 # Copyright (c) FinalFactory — MIT
 set -euo pipefail
 
@@ -49,7 +50,8 @@ random_key() {
 
 all_env_preset() {
   [[ -n "${MQTTOWER_ADMIN_USER:-}" && -n "${MQTTOWER_ADMIN_PASS:-}" && -n "${MQTTOWER_REG_SECRET:-}" \
-    && -n "${MQTTOWER_BROKER_HOST:-}" && -n "${MQTTOWER_BROKER_PORT:-}" && -n "${MQTTOWER_WEB_PORT:-}" ]]
+    && -n "${MQTTOWER_BROKER_HOST:-}" && -n "${MQTTOWER_BROKER_PORT:-}" && -n "${MQTTOWER_WEB_PORT:-}" \
+    && -n "${MQTTOWER_MQTT_USER:-}" && -n "${MQTTOWER_MQTT_PASS:-}" ]]
 }
 
 collect_config() {
@@ -72,6 +74,10 @@ collect_config() {
   : "${MQTTOWER_WEB_PORT:=8080}"
   read -r -p "Dashboard HTTP port [${MQTTOWER_WEB_PORT}]: " _wp || true
   [[ -n "${_wp:-}" ]] && MQTTOWER_WEB_PORT="$_wp"
+  : "${MQTTOWER_MQTT_USER:=mqttower-admin}"
+  prompt_if_empty MQTTOWER_MQTT_USER "MQTT broker username (DynSec admin, from broker LXC)" "mqttower-admin"
+  prompt_if_empty MQTTOWER_MQTT_PASS "MQTT broker password (DynSec admin; from broker LXC install output)" ""
+  [[ -n "${MQTTOWER_MQTT_PASS:-}" ]] || fatal "MQTT broker password is required."
 }
 
 bootstrap_minimal() {
@@ -143,12 +149,20 @@ ConnectionStrings__Default=Data Source=${DATA_DIR}/mqttower.db
 MQTTower__DatabasePath=Data Source=${DATA_DIR}/mqttower.db
 MQTTower__BrokerHost=${MQTTOWER_BROKER_HOST}
 MQTTower__BrokerPort=${MQTTOWER_BROKER_PORT}
+MQTTower__BrokerUsername=${MQTTOWER_MQTT_USER}
+MQTTower__BrokerPassword=${MQTTOWER_MQTT_PASS}
 MQTTower__MosquittoConfigPath=${DATA_DIR}/mosquitto.conf
 MQTTower__MosquittoLogPath=${DATA_DIR}/mosquitto.log
 MQTTower__RegistrationSecret=${MQTTOWER_REG_SECRET}
 MQTTOWER_ADMIN_USER=${MQTTOWER_ADMIN_USER}
 MQTTOWER_ADMIN_PASS=${MQTTOWER_ADMIN_PASS}
 EOF
+  if [[ -n "${MQTTOWER_LOCAL_AGENT_URL:-}" ]]; then
+    printf 'MQTTower__LocalAgentUrl=%s\n' "${MQTTOWER_LOCAL_AGENT_URL}" >>/etc/mqttower/environment
+  fi
+  if [[ -n "${MQTTOWER_LOCAL_AGENT_API_KEY:-}" ]]; then
+    printf 'MQTTower__LocalAgentApiKey=%s\n' "${MQTTOWER_LOCAL_AGENT_API_KEY}" >>/etc/mqttower/environment
+  fi
   chmod 600 /etc/mqttower/environment
   msg_ok "Wrote /etc/mqttower/environment"
 }

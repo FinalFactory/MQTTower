@@ -50,7 +50,8 @@ random_key() {
 # Skip prompts if all required MQTTOWER_* vars are set (modular / dashboard caller).
 all_env_preset() {
   [[ -n "${MQTTOWER_DASHBOARD_URL:-}" && -n "${MQTTOWER_REG_SECRET:-}" && -n "${MQTTOWER_API_KEY:-}" \
-    && -n "${MQTTOWER_MQTT_PORT:-}" && -n "${MQTTOWER_AGENT_PORT:-}" ]]
+    && -n "${MQTTOWER_MQTT_PORT:-}" && -n "${MQTTOWER_AGENT_PORT:-}" \
+    && -n "${MQTTOWER_MQTT_USER:-}" && -n "${MQTTOWER_MQTT_PASS:-}" ]]
 }
 
 collect_config() {
@@ -71,6 +72,11 @@ collect_config() {
   [[ -n "${_mp:-}" ]] && MQTTOWER_MQTT_PORT="$_mp"
   read -r -p "Agent HTTP port [${MQTTOWER_AGENT_PORT}]: " _ap || true
   [[ -n "${_ap:-}" ]] && MQTTOWER_AGENT_PORT="$_ap"
+  : "${MQTTOWER_MQTT_USER:=mqttower-admin}"
+  if [[ -z "${MQTTOWER_MQTT_PASS:-}" ]]; then
+    MQTTOWER_MQTT_PASS="$(random_key)"
+    msg_info "Generated MQTT admin password (DynSec): ${MQTTOWER_MQTT_PASS}"
+  fi
 }
 
 resolve_public_url() {
@@ -112,6 +118,33 @@ install_packages() {
   msg_ok "Dependencies installed."
 }
 
+dynsec_plugin_path() {
+  local p
+  for p in /usr/lib/x86_64-linux-gnu/mosquitto_dynamic_security.so /usr/lib/mosquitto_dynamic_security.so; do
+    if [[ -f "$p" ]]; then
+      echo "$p"
+      return 0
+    fi
+  done
+  fatal "mosquitto_dynamic_security.so not found (install mosquitto package)"
+}
+
+init_dynsec() {
+  need_cmd mosquitto_ctrl
+  local ds="/var/lib/mosquitto/dynamic-security.json"
+  mkdir -p /var/lib/mosquitto
+  chown mosquitto:mosquitto /var/lib/mosquitto 2>/dev/null || true
+  if [[ -f "$ds" ]]; then
+    msg_info "DynSec database already exists: $ds (skipping init)"
+    chown mosquitto:mosquitto "$ds" 2>/dev/null || true
+    return 0
+  fi
+  msg_info "Initializing Dynamic Security (DynSec) admin user ${MQTTOWER_MQTT_USER}..."
+  mosquitto_ctrl dynsec init "$ds" "${MQTTOWER_MQTT_USER}" "${MQTTOWER_MQTT_PASS}"
+  chown mosquitto:mosquitto "$ds"
+  msg_ok "DynSec initialized at ${ds}"
+}
+
 fetch_latest_release_json() {
   curl -fsSL "https://api.github.com/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/releases/latest"
 }
@@ -140,19 +173,24 @@ download_agent_release() {
 
 write_mosquitto_conf() {
   local port="$1"
+  local plugin
+  plugin="$(dynsec_plugin_path)"
   mkdir -p /var/lib/mosquitto
   chown mosquitto:mosquitto /var/lib/mosquitto 2>/dev/null || true
   cat >/etc/mosquitto/conf.d/mqttower.conf <<EOF
-listener ${port}
-allow_anonymous true
+per_listener_settings false
+allow_anonymous false
 persistence true
 persistence_location /var/lib/mosquitto/
 log_dest file /var/log/mosquitto/mosquitto.log
 log_type all
+listener ${port}
+plugin ${plugin}
+plugin_opt_config_file /var/lib/mosquitto/dynamic-security.json
 EOF
   touch /var/log/mosquitto/mosquitto.log
   chown mosquitto:mosquitto /var/log/mosquitto/mosquitto.log 2>/dev/null || true
-  msg_ok "Mosquitto config: /etc/mosquitto/conf.d/mqttower.conf (listener ${port})"
+  msg_ok "Mosquitto config: /etc/mosquitto/conf.d/mqttower.conf (listener ${port}, DynSec)"
 }
 
 write_agent_env() {
@@ -162,6 +200,8 @@ write_agent_env() {
 ASPNETCORE_ENVIRONMENT=Production
 MQTTower__MosquittoConfigPath=/etc/mosquitto/conf.d/mqttower.conf
 MQTTower__MosquittoLogPath=/var/log/mosquitto/mosquitto.log
+MQTTower__BrokerUsername=${MQTTOWER_MQTT_USER}
+MQTTower__BrokerPassword=${MQTTOWER_MQTT_PASS}
 Agent__HttpPort=${MQTTOWER_AGENT_PORT}
 Agent__HttpsPort=0
 Agent__DashboardUrl=${MQTTOWER_DASHBOARD_URL}
@@ -291,6 +331,7 @@ main() {
   collect_config
   resolve_public_url
   install_packages
+  init_dynsec
   download_agent_release
   write_mosquitto_conf "${MQTTOWER_MQTT_PORT}"
   write_agent_env
@@ -303,6 +344,7 @@ main() {
   msg_ok "MQTTower Broker install complete."
   echo ""
   echo "MQTT: ${MQTTOWER_MQTT_PORT}  |  Agent: http://$(get_ipv4):${MQTTOWER_AGENT_PORT}"
+  echo "MQTT DynSec admin user: ${MQTTOWER_MQTT_USER} — set the same MQTTower__BrokerUsername/Password on the dashboard."
   echo "Register in dashboard (Brokers) with Public URL: ${MQTTOWER_PUBLIC_AGENT_URL}"
 }
 

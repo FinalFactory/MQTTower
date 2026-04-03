@@ -49,12 +49,16 @@ public sealed class MqttConnectionService : IMqttPublisher, IMqttSubscriber, IAs
                 return;
             }
 
-            var clientOptions = new MqttClientOptionsBuilder()
+            var builder = new MqttClientOptionsBuilder()
                 .WithTcpServer(_options.BrokerHost, _options.BrokerPort)
-                .WithCredentials(_options.BrokerUsername, _options.BrokerPassword)
                 .WithClientId($"mqttower-{Environment.MachineName}-{Guid.NewGuid():N}"[..24])
-                .WithCleanSession()
-                .Build();
+                .WithCleanSession();
+            if (!string.IsNullOrWhiteSpace(_options.BrokerUsername))
+            {
+                builder = builder.WithCredentials(_options.BrokerUsername, _options.BrokerPassword ?? string.Empty);
+            }
+
+            var clientOptions = builder.Build();
 
             await _client.ConnectAsync(clientOptions, cancellationToken).ConfigureAwait(false);
             _logger.LogInformation("MQTT client connected to {Host}:{Port}", _options.BrokerHost, _options.BrokerPort);

@@ -3,9 +3,11 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using MQTTower.Core;
 using MQTTower.Infrastructure.Data;
 using MQTTower.Infrastructure.Hosting;
+using MQTTower.Infrastructure.Options;
 
 namespace MQTTower.Infrastructure.Tests;
 
@@ -26,9 +28,11 @@ public sealed class BrokerSeedHostedServiceTests
 
         var services = new ServiceCollection();
         services.AddDbContext<AppDbContext>(o => o.UseSqlite(connection), ServiceLifetime.Scoped);
+        services.AddSingleton<IOptions<MqttTowerOptions>>(_ =>
+            Microsoft.Extensions.Options.Options.Create(new MqttTowerOptions()));
         using var sp = services.BuildServiceProvider();
         var scopeFactory = sp.GetRequiredService<IServiceScopeFactory>();
-        var seed = new BrokerSeedHostedService(scopeFactory, NullLogger<BrokerSeedHostedService>.Instance);
+        var seed = new BrokerSeedHostedService(scopeFactory, sp.GetRequiredService<IOptions<MqttTowerOptions>>(), NullLogger<BrokerSeedHostedService>.Instance);
 
         await seed.StartAsync(CancellationToken.None);
 
@@ -70,9 +74,11 @@ public sealed class BrokerSeedHostedServiceTests
 
         var services = new ServiceCollection();
         services.AddDbContext<AppDbContext>(o => o.UseSqlite(connection), ServiceLifetime.Scoped);
+        services.AddSingleton<IOptions<MqttTowerOptions>>(_ =>
+            Microsoft.Extensions.Options.Options.Create(new MqttTowerOptions()));
         using var sp = services.BuildServiceProvider();
         var scopeFactory = sp.GetRequiredService<IServiceScopeFactory>();
-        var seed = new BrokerSeedHostedService(scopeFactory, NullLogger<BrokerSeedHostedService>.Instance);
+        var seed = new BrokerSeedHostedService(scopeFactory, sp.GetRequiredService<IOptions<MqttTowerOptions>>(), NullLogger<BrokerSeedHostedService>.Instance);
 
         await seed.StartAsync(CancellationToken.None);
 
