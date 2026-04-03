@@ -1,69 +1,140 @@
 # MQTTower
 
-Public, open-source MQTTower. Pull requests are welcome.
+A web dashboard for managing one or more Mosquitto MQTT brokers from a single interface.
 
-## Operations (multi-broker)
+> **Early development** — APIs, configuration, and database schema may change between releases.
 
-- **API key rotation** — On **Brokers** → **Rotate key**, the dashboard tries to push the new key to the agent with `POST /api/agent/key` (authenticated with the previous key). If the agent is unreachable, the database is not updated. After a successful push, align the agent’s `appsettings.json` / environment so restarts keep the same key.
+## What is MQTTower?
 
-- **Remote broker watchers** — `WatcherEngine` evaluates rules for the broker id that matches the local/default profile. Watchers targeting a **remote** broker profile are **not** evaluated on the dashboard host.
+MQTTower gives you a browser-based control panel for your Mosquitto brokers. It handles broker configuration, client/user management (Mosquitto Dynamic Security), device tracking, scheduled actions, metric collection, and alerting — across multiple brokers if you need it. Designed for homelabs and small deployments where you want visibility into your MQTT infrastructure without stitching together CLI tools.
 
-- **Metrics history** — Older metric rows may have `BrokerId` null; per-broker charts filter by broker id and will not include those legacy points. New installs run a migration that backfills `MetricSnapshots.BrokerId` to the default local broker id where it was null.
+The system has two components:
 
-- **Agent registration** — `MQTTower:RegistrationSecret` still works as a shared token. You can also mint **one-time tokens** in **Settings** (Admin) or via `POST /api/admin/registration-tokens` (returns plaintext once). At `POST /api/agents/register`, the agent may send either the shared secret or a valid one-time token. If the shared secret is **not** set, only one-time tokens are accepted (whitespace-only `RegistrationToken` returns 503).
+- **Dashboard** (MQTTower.Web) — Blazor Server app. Manages broker profiles, devices, schedulers, watchers, and notifications. Connects to brokers through their agents.
+- **Agent** (MQTTower.Agent) — Lightweight sidecar that runs on the same machine as Mosquitto. Manages the local `mosquitto.conf`, reloads the broker, and exposes a REST API for the dashboard.
 
-### Local multi-broker debug (Visual Studio / Rider)
+## Features
 
-- Open **`MultiBroker.Debug.slnf`** (subset of projects) or **`MQTTower.sln`**. Start Mosquitto on **1883** (for example `docker compose up -d mosquitto` in `docker/`).
-- **MQTTower.Web** — use launch profile **`multi-broker-debug`** in `Properties/launchSettings.json` (sets `MQTTower__RegistrationSecret` for agent registration).
-- **MQTTower.Agent** — launch profiles **`http-agent-a`** (HTTP **5080**) and **`http-agent-b`** (**5081**). Run two agent processes with different profiles (Rider: multi-select **MQTTower.Web** and **MQTTower.Agent** → **Run Multiple Projects**, then add a second Agent run with the other profile; or two terminals: `dotnet run --project src/MQTTower.Agent/MQTTower.Agent.csproj --launch-profile http-agent-a` / `http-agent-b`). Approve pending brokers under **Brokers** after registration.
+- **Multi-broker management** — Add and switch between multiple Mosquitto instances from one dashboard.
+- **Dynamic Security (DynSec)** — Create, edit, and delete MQTT clients, groups, and roles through the UI.
+- **Device tracking** — See connected devices, their state, and last activity.
+- **Schedulers** — Cron-based scheduled MQTT publishes (e.g. turn off lights at midnight).
+- **Watchers** — Rules that trigger on topic patterns (e.g. alert when temperature exceeds a threshold).
+- **Notifications** — Send alerts via ntfy, webhook, or SMTP when watchers fire.
+- **Metrics & charts** — Broker stats over time (connected clients, messages, bytes).
+- **Audit log** — Track who changed what, when.
+- **Agent registration** — Shared secret or one-time tokens for secure agent enrollment.
+- **Auto-updates** — LXC installs include a daily timer that checks GitHub Releases for new versions.
+- **mTLS** — Optional mutual TLS between dashboard and agents.
 
----
+## Screenshots
 
-## mTLS (optional)
+<!-- TODO: Add screenshots of the dashboard UI -->
 
-**Dashboard → agent (HTTPS):**
+## Install
 
-- Set `MQTTower:AgentClientCertPath` (and optional `MQTTower:AgentClientCertPassword`) to a client certificate the agent will accept when you enable mutual TLS on the agent.
-- Set `MQTTower:AgentTlsServerCaCertPath` to a CA PEM/DER when you want server validation against your own CA instead of only thumbprint or TOFU behavior.
+### Proxmox LXC
 
-**Agent (Kestrel):**
+On a **Proxmox VE** host, run one of these one-liners. Each creates a Debian LXC, installs dependencies, and sets up systemd services with daily auto-update.
 
-- Set `Agent:RequireClientCertificate` to `true` and `Agent:TlsCaCertPath` to the CA that issued the dashboard client certificate. The agent must be HTTPS (`Agent:HttpsPort` > 0). If `RequireClientCertificate` is false or the CA path is missing, the agent uses the usual one-way TLS server certificate only.
+**Broker** (Mosquitto + Agent):
 
-**Verification:** Automated tests cover `AgentGatewayFactory.ValidateServerCertificate` and related TLS thumbprint checks. End-to-end mTLS between dashboard and agent is verified manually with the certificate paths above.
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/FinalFactory/MQTTower/main/deploy/mqttower-broker.sh)"
+```
 
----
+**Dashboard** (Web UI only — point it at your broker LXC):
 
-## Dashboard live updates (remote brokers)
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/FinalFactory/MQTTower/main/deploy/mqttower-dashboard.sh)"
+```
 
-For a selected **remote** broker, the Overview page tries the agent `GET /api/stats/stream` SSE stream first; when the stream ends or the agent does not support it, it falls back to polling `GET /api/stats` every 5 seconds. **Broker logs** and **Topic explorer** use `GET /api/logs/stream` and `GET /api/topics/stream` respectively, with REST fallback (logs: `GET /api/logs` every 5s; topics: `GET /api/topics` every 3s).
+To update an existing container later:
 
----
+```bash
+./mqttower-broker.sh update <CTID>
+./mqttower-dashboard.sh update <CTID>
+```
 
-## Automated tests (SSE / DynSec)
+### Docker
 
-- **SSE:** `MQTTower.Infrastructure.Tests` includes `AgentHttpClientSseTests` for `RunStatsStreamLoopAsync`, `RunLogsStreamLoopAsync`, and `RunTopicsStreamLoopAsync` against a mock `text/event-stream` response.
-- **DynSec API:** `MQTTower.Web.Tests` includes `DynSecApiControllerTests` for `brokerId` resolution and default-local fallback.
+```bash
+cd docker/
+docker compose up -d
+```
 
----
+This starts the dashboard on **port 8080** and a broker container (Mosquitto + Agent) on **MQTT 1883** / **Agent HTTP 5080**. Edit `.env` or the `environment` block in `docker-compose.yml` to change credentials and ports.
 
-## Logging
+### From source
 
-The web app and agent use **Serilog** with **console** and rolling **file** sinks under `logs/mqttower-web-.log` and `logs/mqttower-agent-.log` (relative to the process base directory). Tune levels via `Serilog` and `Logging` in `appsettings.json`.
+Requires [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0).
 
----
+```bash
+# Dashboard
+dotnet run --project src/MQTTower.Web
 
-## Future (Phase 8 — agent-side automation)
+# Agent (run on the same machine as Mosquitto)
+dotnet run --project src/MQTTower.Agent
+```
 
-The following is **not implemented** and is intentionally out of scope for the current dashboard-hosted automation:
+## Configuration
 
-- Running **CronSchedulerService** / **WatcherEngine** logic **on the agent** next to Mosquitto.
-- **Pushing** watcher or scheduler events to the dashboard (e.g. `POST /api/events`) or a notification hub.
-- Agent-local **SQLite** or replicated state for remote-broker rules.
+### Dashboard
 
-The dashboard continues to run schedulers and watchers only for the **default local** broker profile; remote-broker watchers remain data-only until Phase 8.
+| Variable | Description | Default |
+|---|---|---|
+| `MQTTOWER_ADMIN_USER` | Initial admin username | `admin` |
+| `MQTTOWER_ADMIN_PASS` | Initial admin password | *(generated on LXC install)* |
+| `ConnectionStrings__Default` | SQLite connection string | `Data Source=mqttower.db` |
+| `MQTTower__BrokerHost` | MQTT broker hostname (for the dashboard's own MQTT client) | `localhost` |
+| `MQTTower__BrokerPort` | MQTT broker port | `1883` |
+| `MQTTower__RegistrationSecret` | Shared secret for agent registration | *(empty — only one-time tokens accepted)* |
+| `ASPNETCORE_URLS` | Listen address | `http://+:8080` |
+
+### Agent
+
+| Variable | Description | Default |
+|---|---|---|
+| `Agent__ApiKey` | API key for dashboard-to-agent auth | *(required)* |
+| `Agent__DashboardUrl` | Dashboard base URL for auto-registration | — |
+| `Agent__RegistrationToken` | Registration secret or one-time token | — |
+| `Agent__HttpPort` | Agent HTTP listen port | `5080` |
+| `MQTTower__MosquittoConfigPath` | Path to `mosquitto.conf` the agent manages | `/etc/mosquitto/mosquitto.conf` |
+| `MQTTower__MosquittoLogPath` | Path to Mosquitto log file | `/var/log/mosquitto/mosquitto.log` |
+
+### mTLS (optional)
+
+For mutual TLS between dashboard and agent:
+
+- **Dashboard**: set `MQTTower__AgentClientCertPath` (+ optional `MQTTower__AgentClientCertPassword`) and `MQTTower__AgentTlsServerCaCertPath`.
+- **Agent**: set `Agent__RequireClientCertificate=true`, `Agent__TlsCaCertPath` to the CA that signed the dashboard cert, and enable HTTPS (`Agent__HttpsPort`).
+
+## Contributing
+
+Pull requests are welcome on this repository.
+
+### Dev setup
+
+Open `MQTTower.sln` (or `MultiBroker.Debug.slnf` for a lighter load) in Visual Studio or Rider.
+
+**Dashboard** — launch profile `multi-broker-debug` in `Properties/launchSettings.json`.
+
+**Agent** — launch profiles `http-agent-a` (port 5080) and `http-agent-b` (port 5081). Each connects to Mosquitto on `127.0.0.1` using the port from its configured `mosquitto.conf`.
+
+**Docker multi-broker** — `docker compose --profile multi-broker up -d` in `docker/` starts a second broker on MQTT 1884 / Agent 5081.
+
+After starting, approve pending brokers under **Brokers** in the dashboard.
+
+### Running tests
+
+```bash
+dotnet test
+```
+
+### Logging
+
+Dashboard and agent use Serilog with console and rolling file sinks. Tune levels in `appsettings.json` under `Serilog` / `Logging`.
 
 ## License
 
-See [LICENSE](LICENSE) (MIT unless otherwise stated).
+[MIT](LICENSE)
