@@ -14,7 +14,10 @@ namespace MQTTower.Web.Tests;
 
 public sealed class AgentsRegistrationTests
 {
-    private static WebApplicationFactory<Program> CreateFactory(string? registrationSecret = null)
+    private static WebApplicationFactory<Program> CreateFactory(
+        string? registrationSecret = null,
+        string? localAgentUrl = null,
+        string? localAgentApiKey = null)
     {
         var dbPath = Path.Combine(Path.GetTempPath(), $"mqttower_regtest_{Guid.NewGuid():N}.db");
         return new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
@@ -28,6 +31,16 @@ public sealed class AgentsRegistrationTests
                 if (registrationSecret is not null)
                 {
                     dict["MQTTower:RegistrationSecret"] = registrationSecret;
+                }
+
+                if (localAgentUrl is not null)
+                {
+                    dict["MQTTower:LocalAgentUrl"] = localAgentUrl;
+                }
+
+                if (localAgentApiKey is not null)
+                {
+                    dict["MQTTower:LocalAgentApiKey"] = localAgentApiKey;
                 }
 
                 config.AddInMemoryCollection(dict);
@@ -147,5 +160,31 @@ public sealed class AgentsRegistrationTests
         var row = await db.BrokerProfiles.AsNoTracking().SingleAsync(x => x.Id == id1);
         row.ApiKey.Should().Be("second-key");
         row.Name.Should().Be("Second");
+    }
+
+    [Fact]
+    public async Task Register_merges_into_local_broker_profile_when_UseLocalServices()
+    {
+        const string secret = "integration-test-secret";
+        const string agentUrl = "http://127.0.0.1:5080";
+        await using var factory = CreateFactory(secret, agentUrl, "seed-key");
+        var client = factory.CreateClient();
+        var res = await client.PostAsJsonAsync("/api/agents/register", new
+        {
+            registrationToken = secret,
+            agentUrl,
+            apiKey = "rotated-key",
+            name = "Host",
+        });
+        res.StatusCode.Should().Be(HttpStatusCode.OK);
+        var id = JsonDocument.Parse(await res.Content.ReadAsStringAsync()).RootElement.GetProperty("id").GetGuid();
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var row = await db.BrokerProfiles.AsNoTracking().SingleAsync(x => x.Id == id);
+        row.UseLocalServices.Should().BeTrue();
+        row.Approved.Should().BeTrue();
+        row.ApiKey.Should().Be("rotated-key");
+        row.Name.Should().Be("Host");
     }
 }

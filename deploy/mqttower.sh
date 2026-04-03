@@ -247,6 +247,12 @@ collect_broker_env() {
   export MQTTOWER_MQTT_PORT="${MQTTOWER_MQTT_PORT:-1883}"
   export MQTTOWER_AGENT_PORT="${MQTTOWER_AGENT_PORT:-5080}"
   export MQTTOWER_PUBLIC_AGENT_URL="${MQTTOWER_PUBLIC_AGENT_URL:-}"
+  export MQTTOWER_MQTT_USER="${MQTTOWER_MQTT_USER:-mqttower-admin}"
+  if [[ -z "${MQTTOWER_MQTT_PASS:-}" ]]; then
+    MQTTOWER_MQTT_PASS="$(openssl rand -hex 16 2>/dev/null || head -c 16 /dev/urandom | xxd -p)"
+    msg_info "Generated MQTT admin password (DynSec): ${MQTTOWER_MQTT_PASS}"
+  fi
+  export MQTTOWER_MQTT_PASS
 
   if [[ -z "${MQTTOWER_DASHBOARD_URL}" ]]; then
     MQTTOWER_DASHBOARD_URL="$(whiptail_or_read "Dashboard" "MQTTower dashboard base URL (e.g. http://192.168.1.10:8080)" "")" || exit 1
@@ -282,6 +288,12 @@ collect_dashboard_env() {
       MQTTOWER_BROKER_HOST="$(whiptail_or_read "Broker" "MQTT broker host (IP of broker LXC)" "")" || exit 1
     fi
     [[ -n "${MQTTOWER_BROKER_HOST}" ]] || fatal "Broker host is required."
+    export MQTTOWER_MQTT_USER="${MQTTOWER_MQTT_USER:-mqttower-admin}"
+    if [[ -z "${MQTTOWER_MQTT_PASS:-}" ]]; then
+      MQTTOWER_MQTT_PASS="$(whiptail_or_read "MQTT" "MQTT broker password (DynSec admin; from broker LXC output)" "")" || exit 1
+    fi
+    [[ -n "${MQTTOWER_MQTT_PASS:-}" ]] || fatal "MQTT broker password is required."
+    export MQTTOWER_MQTT_PASS
   else
     MQTTOWER_BROKER_HOST="127.0.0.1"
   fi
@@ -317,6 +329,16 @@ collect_fullstack_env() {
     msg_info "Generated agent API key: ${MQTTOWER_API_KEY}"
   fi
   export MQTTOWER_API_KEY
+
+  export MQTTOWER_MQTT_USER="${MQTTOWER_MQTT_USER:-mqttower-admin}"
+  if [[ -z "${MQTTOWER_MQTT_PASS:-}" ]]; then
+    MQTTOWER_MQTT_PASS="$(openssl rand -hex 16 2>/dev/null || head -c 16 /dev/urandom | xxd -p)"
+    msg_info "Generated MQTT admin password (DynSec): ${MQTTOWER_MQTT_PASS}"
+  fi
+  export MQTTOWER_MQTT_PASS
+
+  export MQTTOWER_LOCAL_AGENT_URL="${MQTTOWER_PUBLIC_AGENT_URL}"
+  export MQTTOWER_LOCAL_AGENT_API_KEY="${MQTTOWER_API_KEY}"
 }
 
 run_broker_install_in_ct() {
@@ -335,6 +357,8 @@ run_broker_install_in_ct() {
     echo "export MQTTOWER_API_KEY=$(printf '%q' "$MQTTOWER_API_KEY")"
     echo "export MQTTOWER_MQTT_PORT=$(printf '%q' "$MQTTOWER_MQTT_PORT")"
     echo "export MQTTOWER_AGENT_PORT=$(printf '%q' "$MQTTOWER_AGENT_PORT")"
+    echo "export MQTTOWER_MQTT_USER=$(printf '%q' "$MQTTOWER_MQTT_USER")"
+    echo "export MQTTOWER_MQTT_PASS=$(printf '%q' "$MQTTOWER_MQTT_PASS")"
     [[ -n "${MQTTOWER_PUBLIC_AGENT_URL:-}" ]] && echo "export MQTTOWER_PUBLIC_AGENT_URL=$(printf '%q' "$MQTTOWER_PUBLIC_AGENT_URL")"
   } >"$envf"
 
@@ -363,6 +387,10 @@ run_dashboard_install_in_ct() {
     echo "export MQTTOWER_BROKER_HOST=$(printf '%q' "$MQTTOWER_BROKER_HOST")"
     echo "export MQTTOWER_BROKER_PORT=$(printf '%q' "$MQTTOWER_BROKER_PORT")"
     echo "export MQTTOWER_WEB_PORT=$(printf '%q' "$MQTTOWER_WEB_PORT")"
+    echo "export MQTTOWER_MQTT_USER=$(printf '%q' "$MQTTOWER_MQTT_USER")"
+    echo "export MQTTOWER_MQTT_PASS=$(printf '%q' "$MQTTOWER_MQTT_PASS")"
+    [[ -n "${MQTTOWER_LOCAL_AGENT_URL:-}" ]] && echo "export MQTTOWER_LOCAL_AGENT_URL=$(printf '%q' "$MQTTOWER_LOCAL_AGENT_URL")"
+    [[ -n "${MQTTOWER_LOCAL_AGENT_API_KEY:-}" ]] && echo "export MQTTOWER_LOCAL_AGENT_API_KEY=$(printf '%q' "$MQTTOWER_LOCAL_AGENT_API_KEY")"
   } >"$envf"
 
   pct push "$ctid" "$envf" /tmp/mqttower-dashboard.env
@@ -453,7 +481,7 @@ main_install() {
       run_broker_install_in_ct "$ctid"
       echo ""
       echo -e "${BOLD}CT ${ctid}${CL} — MQTT ${MQTTOWER_MQTT_PORT}, Agent http://${ip}:${MQTTOWER_AGENT_PORT}"
-      echo "Approve the broker in the dashboard (Brokers) if pending."
+      echo "MQTT DynSec: user ${MQTTOWER_MQTT_USER} — use this password on the dashboard (MQTTower__BrokerPassword)."
       ;;
     dashboard)
       collect_dashboard_env
@@ -469,7 +497,7 @@ main_install() {
       echo ""
       echo -e "${BOLD}CT ${ctid}${CL} — Dashboard http://${ip}:${MQTTOWER_WEB_PORT} — MQTT ${MQTTOWER_MQTT_PORT}, Agent http://${ip}:${MQTTOWER_AGENT_PORT}"
       echo "Login user: ${MQTTOWER_ADMIN_USER}"
-      echo "Approve the broker in the dashboard (Brokers) if pending."
+      echo "Local agent is pre-linked; MQTT uses DynSec user ${MQTTOWER_MQTT_USER} (same as dashboard env)."
       ;;
   esac
 

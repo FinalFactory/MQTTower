@@ -89,7 +89,12 @@ public sealed class AgentsRegistrationController : ControllerBase
         {
             if (existing.UseLocalServices)
             {
-                return Conflict(new { error = "AgentUrl conflicts with local broker profile" });
+                existing.ApiKey = body.ApiKey;
+                existing.Name = string.IsNullOrWhiteSpace(body.Name) ? existing.Name : body.Name.Trim();
+                existing.TlsCertThumbprint = body.TlsCertThumbprint;
+                existing.RegisteredAt = DateTimeOffset.UtcNow;
+                await _registry.UpdateAsync(existing, cancellationToken).ConfigureAwait(false);
+                return Ok(new { id = existing.Id });
             }
 
             existing.ApiKey = body.ApiKey;

@@ -24,8 +24,12 @@ services:
       Agent__RegistrationToken: ${REGISTRATION_SECRET:-dev-registration-secret}
       Agent__AutoRegister: "true"
       Agent__PublicAgentUrl: http://mqttower-broker:5080
+      MQTTOWER_MQTT_USER: ${MQTTOWER_MQTT_USER:-mqttower-admin}
+      MQTTOWER_MQTT_PASS: ${MQTTOWER_MQTT_PASS:-changeme-mqtt-dev}
       MQTTower__MosquittoConfigPath: /mosquitto/config/mosquitto.conf
       MQTTower__MosquittoLogPath: /mosquitto/log/mosquitto.log
+      MQTTower__BrokerUsername: ${MQTTOWER_MQTT_USER:-mqttower-admin}
+      MQTTower__BrokerPassword: ${MQTTOWER_MQTT_PASS:-changeme-mqtt-dev}
     volumes:
       - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
       - mqttower_data:/mosquitto/data
@@ -48,9 +52,13 @@ services:
       MQTTower__DatabasePath: Data Source=/data/mqttower/mqttower.db
       MQTTower__BrokerHost: mqttower-broker
       MQTTower__BrokerPort: 1883
+      MQTTower__BrokerUsername: ${MQTTOWER_MQTT_USER:-mqttower-admin}
+      MQTTower__BrokerPassword: ${MQTTOWER_MQTT_PASS:-changeme-mqtt-dev}
       MQTTower__MosquittoConfigPath: /mosquitto/config/mosquitto.conf
       MQTTower__MosquittoLogPath: /mosquitto/log/mosquitto.log
       MQTTower__RegistrationSecret: ${REGISTRATION_SECRET:-dev-registration-secret}
+      MQTTower__LocalAgentUrl: http://mqttower-broker:5080
+      MQTTower__LocalAgentApiKey: ${AGENT_API_KEY:-agent-dev-key}
     volumes:
       - mqttower_data:/data
       - mosquitto_logs:/mosquitto/log
@@ -79,8 +87,12 @@ services:
       Agent__RegistrationToken: ${REGISTRATION_SECRET:-dev-registration-secret}
       Agent__AutoRegister: "true"
       Agent__PublicAgentUrl: http://mqttower-broker-b:5080
+      MQTTOWER_MQTT_USER: ${MQTTOWER_MQTT_USER_B:-mqttower-admin-b}
+      MQTTOWER_MQTT_PASS: ${MQTTOWER_MQTT_PASS_B:-changeme-mqtt-dev-b}
       MQTTower__MosquittoConfigPath: /mosquitto/config/mosquitto.conf
       MQTTower__MosquittoLogPath: /mosquitto/log/mosquitto.log
+      MQTTower__BrokerUsername: ${MQTTOWER_MQTT_USER_B:-mqttower-admin-b}
+      MQTTower__BrokerPassword: ${MQTTOWER_MQTT_PASS_B:-changeme-mqtt-dev-b}
     volumes:
       - ./mosquitto/mosquitto-b.conf:/mosquitto/config/mosquitto.conf
       - mqttower_data_b:/mosquitto/data

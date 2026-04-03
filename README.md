@@ -89,6 +89,10 @@ dotnet run --project src/MQTTower.Agent
 | `ConnectionStrings__Default` | SQLite connection string | `Data Source=mqttower.db` |
 | `MQTTower__BrokerHost` | MQTT broker hostname (for the dashboard's own MQTT client) | `localhost` |
 | `MQTTower__BrokerPort` | MQTT broker port | `1883` |
+| `MQTTower__BrokerUsername` | MQTT login (DynSec admin user; required when the broker disables anonymous access) | — |
+| `MQTTower__BrokerPassword` | MQTT password | — |
+| `MQTTower__LocalAgentUrl` | Co-located agent HTTP URL (full-stack / Docker; seeds the Local broker row) | — |
+| `MQTTower__LocalAgentApiKey` | API key for that agent (matches `Agent__ApiKey`) | — |
 | `MQTTower__RegistrationSecret` | Shared secret for agent registration | *(empty — only one-time tokens accepted)* |
 | `ASPNETCORE_URLS` | Listen address | `http://+:8080` |
 
@@ -102,6 +106,8 @@ dotnet run --project src/MQTTower.Agent
 | `Agent__HttpPort` | Agent HTTP listen port | `5080` |
 | `MQTTower__MosquittoConfigPath` | Path to `mosquitto.conf` the agent manages | `/etc/mosquitto/mosquitto.conf` |
 | `MQTTower__MosquittoLogPath` | Path to Mosquitto log file | `/var/log/mosquitto/mosquitto.log` |
+| `MQTTower__BrokerUsername` | MQTT login (same DynSec admin user as the dashboard) | — |
+| `MQTTower__BrokerPassword` | MQTT password | — |
 
 ### mTLS (optional)
 
