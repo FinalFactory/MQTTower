@@ -35,25 +35,26 @@ The system has two components:
 
 ### Proxmox LXC
 
-On a **Proxmox VE** host, run one of these one-liners. Each creates a Debian LXC, installs dependencies, and sets up systemd services with daily auto-update.
-
-**Broker** (Mosquitto + Agent):
+On a **Proxmox VE** host, run:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/FinalFactory/MQTTower/main/deploy/mqttower-broker.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/FinalFactory/MQTTower/main/deploy/mqttower.sh)"
 ```
 
-**Dashboard** (Web UI only — point it at your broker LXC):
+The installer asks which mode you want:
 
-```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/FinalFactory/MQTTower/main/deploy/mqttower-dashboard.sh)"
-```
+- **Broker** — Mosquitto + Agent (point the agent at an existing dashboard URL).
+- **Dashboard** — MQTTower.Web only; enter the MQTT broker host (e.g. another LXC).
+- **Full stack** — Mosquitto + Agent + Dashboard in one LXC (local broker and web on `127.0.0.1`).
+
+Each mode creates a Debian LXC, installs dependencies, and sets up systemd services with daily auto-update.
+
+For **Mosquitto + agent** on a separate machine, use **Broker** mode (or **Docker Compose** below).
 
 To update an existing container later:
 
 ```bash
-./mqttower-broker.sh update <CTID>
-./mqttower-dashboard.sh update <CTID>
+./mqttower.sh update <CTID>
 ```
 
 ### Docker
