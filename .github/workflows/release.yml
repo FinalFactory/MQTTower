@@ -12,7 +12,31 @@ permissions:
   contents: write
 
 jobs:
+  # GitHub "Latest" follows the most recently published release, not semver. When several v* tags
+  # are pushed (e.g. after a history rewrite), an older semver can win unless we set make_latest.
+  semver:
+    runs-on: ubuntu-latest
+    outputs:
+      make_latest: ${{ steps.pick.outputs.make_latest }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - id: pick
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          HIGHEST="$(git tag -l 'v*' | sort -V | tail -1)"
+          echo "Pushed tag: $TAG; highest v*: $HIGHEST" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$TAG" = "$HIGHEST" ]; then
+            echo "make_latest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "make_latest=false" >> "$GITHUB_OUTPUT"
+          fi
+
   publish-agent:
+    needs: semver
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -36,11 +60,14 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: mqttower-agent-linux-x64.tar.gz
+          make_latest: ${{ needs.semver.outputs.make_latest == 'true' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   publish-web:
-    needs: publish-agent
+    needs:
+      - semver
+      - publish-agent
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -64,5 +91,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: mqttower-web-linux-x64.tar.gz
+          make_latest: ${{ needs.semver.outputs.make_latest == 'true' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

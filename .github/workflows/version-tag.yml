@@ -94,6 +94,7 @@ jobs:
         with:
           tag_name: ${{ needs.tag-if-newer.outputs.tag_name }}
           files: mqttower-agent-linux-x64.tar.gz
+          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -126,5 +127,6 @@ jobs:
         with:
           tag_name: ${{ needs.tag-if-newer.outputs.tag_name }}
           files: mqttower-web-linux-x64.tar.gz
+          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
