@@ -1,5 +1,7 @@
-# When VERSION (repo root) is bumped on main, create matching git tag vX.Y.Z.
-# That tag triggers release.yml to publish agent and web tarballs.
+# When VERSION (repo root) is bumped on main, create git tag vX.Y.Z and publish a GitHub Release.
+#
+# Pushes from GITHUB_TOKEN do NOT trigger other workflows (including release.yml on tag push).
+# So release assets are built here; release.yml still runs for manual tag pushes from developers.
 name: Version tag
 
 on:
@@ -18,13 +20,17 @@ concurrency:
 jobs:
   tag-if-newer:
     runs-on: ubuntu-latest
+    outputs:
+      tag_pushed: ${{ steps.tag.outputs.tag_pushed }}
+      tag_name: ${{ steps.tag.outputs.tag_name }}
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Create and push tag when VERSION increased
+      - id: tag
+        name: Create and push tag when VERSION increased
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -38,6 +44,8 @@ jobs:
           TAG="v${VERSION}"
 
           if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "tag_pushed=false" >> "$GITHUB_OUTPUT"
+            echo "tag_name=" >> "$GITHUB_OUTPUT"
             echo "Tag $TAG already exists; nothing to do."
             exit 0
           fi
@@ -55,4 +63,68 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "$TAG" -m "Release $TAG"
           git push origin "refs/tags/$TAG"
+          echo "tag_pushed=true" >> "$GITHUB_OUTPUT"
+          echo "tag_name=$TAG" >> "$GITHUB_OUTPUT"
           echo "Pushed $TAG"
+
+  publish-agent:
+    needs: tag-if-newer
+    if: needs.tag-if-newer.outputs.tag_pushed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Publish linux-x64 (framework-dependent)
+        run: |
+          dotnet publish src/MQTTower.Agent/MQTTower.Agent.csproj \
+            -c Release \
+            -r linux-x64 \
+            --self-contained false \
+            -o ./publish
+
+      - name: Pack tarball
+        run: tar -czf mqttower-agent-linux-x64.tar.gz -C publish .
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.tag-if-newer.outputs.tag_name }}
+          files: mqttower-agent-linux-x64.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-web:
+    needs:
+      - tag-if-newer
+      - publish-agent
+    if: needs.tag-if-newer.outputs.tag_pushed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Publish linux-x64 (framework-dependent)
+        run: |
+          dotnet publish src/MQTTower.Web/MQTTower.Web.csproj \
+            -c Release \
+            -r linux-x64 \
+            --self-contained false \
+            -o ./publish-web
+
+      - name: Pack tarball
+        run: tar -czf mqttower-web-linux-x64.tar.gz -C publish-web .
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.tag-if-newer.outputs.tag_name }}
+          files: mqttower-web-linux-x64.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

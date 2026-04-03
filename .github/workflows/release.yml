@@ -1,3 +1,6 @@
+# Publishes tarballs when a v* tag is pushed (e.g. from a developer machine).
+# Tags created by the Version tag workflow use GITHUB_TOKEN and do not trigger this workflow;
+# that workflow publishes releases itself.
 name: Release
 
 on:

@@ -127,7 +127,7 @@ After starting, approve pending brokers under **Brokers** in the dashboard.
 
 ### Releases
 
-The repo root file **`VERSION`** holds the current semver (e.g. `0.2.0`). When **`main`** is updated with a **higher** version than the latest `v*` git tag, CI creates tag `vX.Y.Z` and publishes GitHub Release assets (agent and web tarballs). No manual tagging is required for normal releases.
+The repo root file **`VERSION`** holds the current semver (e.g. `0.2.0`). When **`main`** is updated with a **higher** version than the latest `v*` git tag, CI creates tag `vX.Y.Z`, builds both apps, and publishes a **GitHub Release** with the agent and web tarballs (so `releases/latest` works for the LXC installers). You can also push a `v*` tag from git locally; that triggers the release workflow too.
 
 ### Running tests
 
