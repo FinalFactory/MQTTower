@@ -5,7 +5,12 @@ COPY src ./src
 RUN dotnet publish src/MQTTower.Agent/MQTTower.Agent.csproj -c Release -o /app/publish
 
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends mosquitto \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /app/publish .
-EXPOSE 5080 5100
-ENTRYPOINT ["dotnet", "MQTTower.Agent.dll"]
+COPY docker/docker-entrypoint-agent.sh /docker-entrypoint-agent.sh
+RUN chmod +x /docker-entrypoint-agent.sh
+EXPOSE 1883 5080 5100
+ENTRYPOINT ["/docker-entrypoint-agent.sh"]

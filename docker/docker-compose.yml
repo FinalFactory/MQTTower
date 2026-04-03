@@ -1,11 +1,36 @@
-# MQTTower stack: dashboard + Mosquitto. Optional agents via Compose profiles.
+# MQTTower stack: dashboard + broker (Mosquitto + Agent in one image).
 #
-# - Default: `docker compose up -d` — dashboard (8080) + Mosquitto (1883).
-# - With one agent: `docker compose --profile agent up -d` — adds mqttower-agent (5080) for remote-broker testing.
-# - Second agent (multi-broker UI): `docker compose --profile multi-broker up -d` — adds mqttower-agent-b (5081).
-#   Register two broker profiles in the dashboard (different Agent URL / API key) to exercise multi-broker flows.
+# - Default: `docker compose up -d` — dashboard (8080), MQTT (1883), agent HTTP (5080).
+# - Multi-broker UI: `docker compose --profile multi-broker up -d` — adds second broker (1884, agent 5081).
+#   Register two broker profiles (different Agent URL / API key).
 
 services:
+  mqttower-broker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.agent
+    image: mqttower/broker:local
+    container_name: mqttower-broker
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "5080:5080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Agent__ApiKey: ${AGENT_API_KEY:-agent-dev-key}
+      Agent__HttpsPort: 0
+      Agent__HttpPort: 5080
+      Agent__DashboardUrl: http://mqttower:8080
+      Agent__RegistrationToken: ${REGISTRATION_SECRET:-dev-registration-secret}
+      Agent__AutoRegister: "true"
+      Agent__PublicAgentUrl: http://mqttower-broker:5080
+      MQTTower__MosquittoConfigPath: /mosquitto/config/mosquitto.conf
+      MQTTower__MosquittoLogPath: /mosquitto/log/mosquitto.log
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mqttower_data:/mosquitto/data
+      - mosquitto_logs:/mosquitto/log
+
   mqttower:
     build:
       context: ..
@@ -21,7 +46,7 @@ services:
       MQTTOWER_ADMIN_PASS: changeme
       ConnectionStrings__Default: Data Source=/data/mqttower/mqttower.db
       MQTTower__DatabasePath: Data Source=/data/mqttower/mqttower.db
-      MQTTower__BrokerHost: mosquitto
+      MQTTower__BrokerHost: mqttower-broker
       MQTTower__BrokerPort: 1883
       MQTTower__MosquittoConfigPath: /mosquitto/config/mosquitto.conf
       MQTTower__MosquittoLogPath: /mosquitto/log/mosquitto.log
@@ -31,50 +56,19 @@ services:
       - mosquitto_logs:/mosquitto/log
       - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
     depends_on:
-      - mosquitto
+      - mqttower-broker
 
-  mqttower-agent:
+  mqttower-broker-b:
     build:
       context: ..
       dockerfile: docker/Dockerfile.agent
-    image: mqttower/agent:local
-    container_name: mqttower-agent
-    restart: unless-stopped
-    profiles:
-      - agent
-      - multi-broker
-    ports:
-      - "5080:5080"
-    environment:
-      ASPNETCORE_ENVIRONMENT: Production
-      Agent__ApiKey: ${AGENT_API_KEY:-agent-dev-key}
-      Agent__HttpsPort: 0
-      Agent__HttpPort: 5080
-      Agent__DashboardUrl: http://mqttower:8080
-      Agent__RegistrationToken: ${REGISTRATION_SECRET:-dev-registration-secret}
-      Agent__AutoRegister: "true"
-      Agent__PublicAgentUrl: http://mqttower-agent:5080
-      MQTTower__BrokerHost: mosquitto
-      MQTTower__BrokerPort: 1883
-      MQTTower__MosquittoConfigPath: /mosquitto/config/mosquitto.conf
-      MQTTower__MosquittoLogPath: /mosquitto/log/mosquitto.log
-    volumes:
-      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
-      - mosquitto_logs:/mosquitto/log
-    depends_on:
-      - mosquitto
-      - mqttower
-
-  mqttower-agent-b:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.agent
-    image: mqttower/agent:local
-    container_name: mqttower-agent-b
+    image: mqttower/broker:local
+    container_name: mqttower-broker-b
     restart: unless-stopped
     profiles:
       - multi-broker
     ports:
+      - "1884:1884"
       - "5081:5080"
     environment:
       ASPNETCORE_ENVIRONMENT: Production
@@ -84,29 +78,18 @@ services:
       Agent__DashboardUrl: http://mqttower:8080
       Agent__RegistrationToken: ${REGISTRATION_SECRET:-dev-registration-secret}
       Agent__AutoRegister: "true"
-      Agent__PublicAgentUrl: http://mqttower-agent-b:5080
-      MQTTower__BrokerHost: mosquitto
-      MQTTower__BrokerPort: 1883
+      Agent__PublicAgentUrl: http://mqttower-broker-b:5080
       MQTTower__MosquittoConfigPath: /mosquitto/config/mosquitto.conf
       MQTTower__MosquittoLogPath: /mosquitto/log/mosquitto.log
     volumes:
-      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
-      - mosquitto_logs:/mosquitto/log
+      - ./mosquitto/mosquitto-b.conf:/mosquitto/config/mosquitto.conf
+      - mqttower_data_b:/mosquitto/data
+      - mosquitto_logs_b:/mosquitto/log
     depends_on:
-      - mosquitto
       - mqttower
-
-  mosquitto:
-    image: eclipse-mosquitto:2
-    container_name: mqttower-mosquitto
-    restart: unless-stopped
-    ports:
-      - "1883:1883"
-    volumes:
-      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
-      - mqttower_data:/mosquitto/data
-      - mosquitto_logs:/mosquitto/log
 
 volumes:
   mqttower_data:
+  mqttower_data_b:
   mosquitto_logs:
+  mosquitto_logs_b:
