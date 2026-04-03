@@ -1,0 +1,65 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  publish-agent:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Publish linux-x64 (framework-dependent)
+        run: |
+          dotnet publish src/MQTTower.Agent/MQTTower.Agent.csproj \
+            -c Release \
+            -r linux-x64 \
+            --self-contained false \
+            -o ./publish
+
+      - name: Pack tarball
+        run: tar -czf mqttower-agent-linux-x64.tar.gz -C publish .
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: mqttower-agent-linux-x64.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-web:
+    needs: publish-agent
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Publish linux-x64 (framework-dependent)
+        run: |
+          dotnet publish src/MQTTower.Web/MQTTower.Web.csproj \
+            -c Release \
+            -r linux-x64 \
+            --self-contained false \
+            -o ./publish-web
+
+      - name: Pack tarball
+        run: tar -czf mqttower-web-linux-x64.tar.gz -C publish-web .
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: mqttower-web-linux-x64.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
