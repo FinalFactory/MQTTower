@@ -14,8 +14,6 @@
         "Agent__RegistrationToken": "dev-registration-secret",
         "Agent__AutoRegister": "true",
         "Agent__PublicAgentUrl": "http://localhost:5080",
-        "MQTTower__BrokerHost": "127.0.0.1",
-        "MQTTower__BrokerPort": "1883",
         "MQTTower__MosquittoConfigPath": "../../docker/mosquitto/mosquitto.conf",
         "MQTTower__MosquittoLogPath": "mosquitto-agent.log"
       }
@@ -33,8 +31,6 @@
         "Agent__RegistrationToken": "dev-registration-secret",
         "Agent__AutoRegister": "true",
         "Agent__PublicAgentUrl": "http://localhost:5081",
-        "MQTTower__BrokerHost": "127.0.0.1",
-        "MQTTower__BrokerPort": "1883",
         "MQTTower__MosquittoConfigPath": "../../docker/mosquitto/mosquitto.conf",
         "MQTTower__MosquittoLogPath": "mosquitto-agent.log"
       }

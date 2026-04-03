@@ -24,6 +24,7 @@ using MQTTower.Agent;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<MqttTowerOptions>(builder.Configuration.GetSection(MqttTowerOptions.SectionName));
+builder.Services.AddSingleton<IPostConfigureOptions<MqttTowerOptions>, AgentCoLocatedBrokerPostConfigure>();
 builder.Services.Configure<AgentOptions>(builder.Configuration.GetSection(AgentOptions.SectionName));
 
 var agentSection = builder.Configuration.GetSection(AgentOptions.SectionName);

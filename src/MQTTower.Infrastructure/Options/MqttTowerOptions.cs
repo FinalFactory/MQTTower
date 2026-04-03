@@ -4,7 +4,10 @@ public sealed class MqttTowerOptions
 {
     public const string SectionName = "MQTTower";
 
+    /// <summary>MQTT broker host for the <b>dashboard</b> in-process client (local broker profile). Ignored by MQTTower.Agent (agent always uses localhost; port from mosquitto.conf).</summary>
     public string BrokerHost { get; set; } = "127.0.0.1";
+
+    /// <summary>MQTT broker port for the <b>dashboard</b> in-process client (local broker profile). Ignored by MQTTower.Agent (port parsed from <see cref="MosquittoConfigPath"/>).</summary>
     public int BrokerPort { get; set; } = 1883;
     public string? BrokerUsername { get; set; }
     public string? BrokerPassword { get; set; }

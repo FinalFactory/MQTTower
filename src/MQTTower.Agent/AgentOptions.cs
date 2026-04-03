@@ -8,8 +8,8 @@ public sealed class AgentOptions
     public string? DashboardUrl { get; set; }
     public string? RegistrationToken { get; set; }
     public bool AutoRegister { get; set; } = true;
-    /// <summary>Optional shell command to restart Mosquitto (e.g. <c>docker kill -s HUP mosquitto</c>).</summary>
-    public string? RestartCommand { get; set; }
+    /// <summary>Shell command to reload Mosquitto after config changes (SIGHUP). Override only for non-standard deployments.</summary>
+    public string? RestartCommand { get; set; } = "kill -HUP $(pidof mosquitto)";
     /// <summary>When set with HTTPS, validate dashboard client certificates against this CA (PEM/DER).</summary>
     public string? TlsCaCertPath { get; set; }
 
