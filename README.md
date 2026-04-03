@@ -125,6 +125,10 @@ Open `MQTTower.sln` (or `MultiBroker.Debug.slnf` for a lighter load) in Visual S
 
 After starting, approve pending brokers under **Brokers** in the dashboard.
 
+### Releases
+
+The repo root file **`VERSION`** holds the current semver (e.g. `0.2.0`). When **`main`** is updated with a **higher** version than the latest `v*` git tag, CI creates tag `vX.Y.Z` and publishes GitHub Release assets (agent and web tarballs). No manual tagging is required for normal releases.
+
 ### Running tests
 
 ```bash

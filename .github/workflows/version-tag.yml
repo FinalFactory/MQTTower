@@ -1,0 +1,58 @@
+# When VERSION (repo root) is bumped on main, create matching git tag vX.Y.Z.
+# That tag triggers release.yml to publish agent and web tarballs.
+name: Version tag
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "VERSION"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: version-tag
+  cancel-in-progress: true
+
+jobs:
+  tag-if-newer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Create and push tag when VERSION increased
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          RAW="$(tr -d ' \r\n' < VERSION)"
+          VERSION="${RAW#v}"
+          if [[ -z "$VERSION" ]]; then
+            echo "::error::VERSION file is empty"
+            exit 1
+          fi
+          TAG="v${VERSION}"
+
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists; nothing to do."
+            exit 0
+          fi
+
+          LATEST="$(git tag -l 'v*' --sort=-v:refname | head -1 || true)"
+          if [[ -n "$LATEST" ]]; then
+            HIGHEST="$(printf '%s\n' "$LATEST" "$TAG" | sort -V | tail -1)"
+            if [[ "$HIGHEST" != "$TAG" ]]; then
+              echo "::error::VERSION $TAG is not greater than latest tag $LATEST. Bump VERSION to a higher semver."
+              exit 1
+            fi
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "refs/tags/$TAG"
+          echo "Pushed $TAG"
