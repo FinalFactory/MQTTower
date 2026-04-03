@@ -1,4 +1,5 @@
 using Serilog;
+using Microsoft.Extensions.Configuration;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
@@ -26,11 +27,16 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<MqttTowerOptions>(builder.Configuration.GetSection(MqttTowerOptions.SectionName));
 
-var connectionString = builder.Configuration.GetConnectionString("Default")
-    ?? builder.Configuration[$"{MqttTowerOptions.SectionName}:DatabasePath"]
-    ?? "Data Source=mqttower.db";
-
-builder.Services.AddDbContext<AppDbContext>(o => o.UseSqlite(connectionString));
+// Resolve the connection string when DbContext is built so integration tests'
+// ConfigureAppConfiguration (per-test SQLite file) is visible on IConfiguration.
+builder.Services.AddDbContext<AppDbContext>((sp, o) =>
+{
+    var cfg = sp.GetRequiredService<IConfiguration>();
+    var cs = cfg.GetConnectionString("Default")
+        ?? cfg[$"{MqttTowerOptions.SectionName}:DatabasePath"]
+        ?? "Data Source=mqttower.db";
+    o.UseSqlite(cs);
+});
 
 builder.Services.AddSingleton<MqttConnectionService>();
 builder.Services.AddSingleton<IMqttPublisher>(sp => sp.GetRequiredService<MqttConnectionService>());

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using MQTTower.Core.Models;
 using MQTTower.Infrastructure.Data;
 using MQTTower.Infrastructure.Data.Entities;
@@ -35,7 +36,22 @@ public sealed class AdminSeedHostedService : IHostedService
             Role = AppUserRole.Admin,
             CreatedAt = DateTimeOffset.UtcNow,
         });
-        await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (DbUpdateException)
+        {
+            // Concurrent seed (parallel integration tests) or duplicate username.
+            await using var scope2 = _scopeFactory.CreateAsyncScope();
+            var db2 = scope2.ServiceProvider.GetRequiredService<AppDbContext>();
+            if (await db2.AppUsers.AnyAsync(cancellationToken).ConfigureAwait(false))
+            {
+                return;
+            }
+
+            throw;
+        }
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
