@@ -18,7 +18,8 @@ public sealed class SchedulerApiController : ControllerBase
     }
 
     [HttpGet]
-    public Task<IReadOnlyList<ScheduledTask>> List(CancellationToken cancellationToken) => _scheduler.ListAsync(cancellationToken);
+    public Task<IReadOnlyList<ScheduledTask>> List([FromQuery] Guid? brokerId, CancellationToken cancellationToken) =>
+        _scheduler.ListAsync(brokerId, cancellationToken);
 
     [HttpPost]
     [Authorize(Roles = nameof(AppUserRole.Admin))]

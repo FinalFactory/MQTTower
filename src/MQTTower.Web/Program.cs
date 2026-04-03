@@ -1,6 +1,8 @@
+using Serilog;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using MQTTower.Core.Interfaces;
 using MQTTower.Core.Models;
@@ -13,9 +15,11 @@ using MQTTower.Infrastructure.Monitoring;
 using MQTTower.Infrastructure.Mqtt;
 using MQTTower.Infrastructure.Notifications;
 using MQTTower.Infrastructure.Options;
+using MQTTower.Infrastructure.Agents;
 using MQTTower.Infrastructure.Tasmota;
 using MQTTower.Web.Components;
 using MQTTower.Web.Hosting;
+using MQTTower.Web.Services;
 using MudBlazor.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -44,6 +48,11 @@ builder.Services.AddScoped<IDeviceStateTracker, EfDeviceStateTracker>();
 builder.Services.AddScoped<IUserService, EfUserService>();
 builder.Services.AddScoped<IBrokerConfigStore, FileBrokerConfigStore>();
 builder.Services.AddScoped<IBrokerLogReader, BrokerLogReader>();
+builder.Services.AddScoped<IBrokerRegistry, EfBrokerRegistry>();
+builder.Services.AddScoped<IRegistrationTokenService, EfRegistrationTokenService>();
+builder.Services.AddSingleton<AgentGatewayFactory>();
+builder.Services.AddSingleton<IBrokerGatewayFactory, AuditingBrokerGatewayFactory>();
+builder.Services.AddScoped<BrokerContext>();
 builder.Services.AddScoped<IBackupService, BackupService>();
 builder.Services.AddSingleton<ITasmotaParser, TasmotaParser>();
 
@@ -67,17 +76,25 @@ builder.Services.AddHostedService<MqttStartupHostedService>();
 builder.Services.AddHostedService<MetricsCollectorHostedService>();
 builder.Services.AddHostedService<DeviceMonitorHostedService>();
 builder.Services.AddHostedService<AdminSeedHostedService>();
+builder.Services.AddHostedService<BrokerSeedHostedService>();
+builder.Services.AddHostedService<BrokerHealthMonitor>();
 
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(o =>
     {
         o.LoginPath = "/login";
         o.AccessDeniedPath = "/login";
+        o.Cookie.HttpOnly = true;
+        o.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        o.Cookie.SameSite = SameSiteMode.Lax;
+        o.ExpireTimeSpan = TimeSpan.FromDays(14);
+        o.SlidingExpiration = true;
     });
 
 builder.Services.AddAuthorization(o =>
 {
-    o.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();
+    // Do not set FallbackPolicy: it applies to static web assets and the Blazor host, causing 302 to /login
+    // for CSS/JS and broken UI. Page auth uses @attribute [Authorize] in Components/Pages/_Imports.razor.
     o.AddPolicy("Admin", p => p.RequireRole(nameof(AppUserRole.Admin)));
 });
 
@@ -92,6 +109,22 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddHttpClient();
+
+builder.Services.AddRateLimiter(o =>
+{
+    o.AddFixedWindowLimiter("auth", opt =>
+    {
+        opt.Window = TimeSpan.FromMinutes(1);
+        opt.PermitLimit = 30;
+        opt.QueueLimit = 0;
+    });
+    o.AddFixedWindowLimiter("registration", opt =>
+    {
+        opt.Window = TimeSpan.FromMinutes(1);
+        opt.PermitLimit = 10;
+        opt.QueueLimit = 0;
+    });
+});
 
 var app = builder.Build();
 
@@ -114,6 +147,7 @@ if (!app.Environment.IsDevelopment())
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 app.UseAntiforgery();
 
 app.MapStaticAssets();
@@ -129,4 +163,11 @@ app.MapGet("/logout", async (HttpContext ctx) =>
     return Results.Redirect("/login");
 }).AllowAnonymous();
 
-app.Run();
+try
+{
+    app.Run();
+}
+finally
+{
+    Log.CloseAndFlush();
+}

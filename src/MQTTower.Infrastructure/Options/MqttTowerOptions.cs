@@ -13,6 +13,12 @@ public sealed class MqttTowerOptions
     public string MosquittoConfigPath { get; set; } = "/etc/mosquitto/mosquitto.conf";
     public string MosquittoLogPath { get; set; } = "/var/log/mosquitto/mosquitto.log";
     public int MetricsRetentionDays { get; set; } = 30;
+
+    /// <summary>Maximum topic tree nodes in topic explorer; additional topics are ignored until cleared.</summary>
+    public int TopicExplorerMaxNodes { get; set; } = 10_000;
+
+    /// <summary>Audit log entries older than this are pruned when metrics collection runs.</summary>
+    public int AuditRetentionDays { get; set; } = 90;
     public string? NtfyBaseUrl { get; set; }
     public string? NtfyTopic { get; set; }
 
@@ -23,4 +29,16 @@ public sealed class MqttTowerOptions
     public int SmtpPort { get; set; } = 587;
     public string? SmtpFrom { get; set; }
     public string? SmtpTo { get; set; }
+
+    /// <summary>Shared secret agents must send when calling <c>/api/agents/register</c>.</summary>
+    public string? RegistrationSecret { get; set; }
+
+    /// <summary>Optional client certificate path for mTLS to agents.</summary>
+    public string? AgentClientCertPath { get; set; }
+
+    /// <summary>Optional client certificate password.</summary>
+    public string? AgentClientCertPassword { get; set; }
+
+    /// <summary>Optional PEM/DER of a CA used to validate the agent server certificate when the broker TLS thumbprint is not pinned.</summary>
+    public string? AgentTlsServerCaCertPath { get; set; }
 }

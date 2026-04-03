@@ -16,20 +16,34 @@ public sealed class MqttConnectionService : IMqttPublisher, IMqttSubscriber, IAs
     private readonly MqttTowerOptions _options;
     private readonly IMqttClient _client = new MqttFactory().CreateMqttClient();
     private readonly ConcurrentDictionary<string, List<Func<MqttAppMessage, Task>>> _handlers = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, byte> _brokerSubscribedFilters = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _connectGate = new(1, 1);
+    private volatile bool _disposed;
 
     public MqttConnectionService(IOptions<MqttTowerOptions> options, ILogger<MqttConnectionService> logger)
     {
         _options = options.Value;
         _logger = logger;
         _client.ApplicationMessageReceivedAsync += OnMessageAsync;
+        _client.DisconnectedAsync += _ =>
+        {
+            _brokerSubscribedFilters.Clear();
+            return Task.CompletedTask;
+        };
     }
+
+    public bool IsConnected => _client.IsConnected;
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         await _connectGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            if (_disposed)
+            {
+                return;
+            }
+
             if (_client.IsConnected)
             {
                 return;
@@ -63,7 +77,7 @@ public sealed class MqttConnectionService : IMqttPublisher, IMqttSubscriber, IAs
 
         foreach (var kv in _handlers)
         {
-            if (!TopicMatches(e.ApplicationMessage.Topic, kv.Key))
+            if (!MqttTopicMatcher.TopicMatches(e.ApplicationMessage.Topic, kv.Key))
             {
                 continue;
             }
@@ -88,37 +102,6 @@ public sealed class MqttConnectionService : IMqttPublisher, IMqttSubscriber, IAs
         }
     }
 
-    private static bool TopicMatches(string topic, string filter)
-    {
-        if (filter == "#")
-        {
-            return true;
-        }
-
-        var tf = filter.Split('/');
-        var tt = topic.Split('/');
-
-        for (var i = 0; i < tf.Length; i++)
-        {
-            if (tf[i] == "#")
-            {
-                return true;
-            }
-
-            if (i >= tt.Length)
-            {
-                return false;
-            }
-
-            if (tf[i] != "+" && tf[i] != tt[i])
-            {
-                return false;
-            }
-        }
-
-        return tf.Length == tt.Length;
-    }
-
     public async Task PublishAsync(string topic, ReadOnlyMemory<byte> payload, int qos = 0, bool retain = false, CancellationToken cancellationToken = default)
     {
         await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
@@ -133,6 +116,11 @@ public sealed class MqttConnectionService : IMqttPublisher, IMqttSubscriber, IAs
 
     private async Task EnsureConnectedAsync(CancellationToken cancellationToken)
     {
+        if (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(MqttConnectionService));
+        }
+
         if (_client.IsConnected)
         {
             return;
@@ -143,6 +131,11 @@ public sealed class MqttConnectionService : IMqttPublisher, IMqttSubscriber, IAs
 
     public async Task SubscribeAsync(string topicFilter, Func<MqttAppMessage, Task> handler, CancellationToken cancellationToken = default)
     {
+        if (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(MqttConnectionService));
+        }
+
         _handlers.AddOrUpdate(topicFilter, _ => new List<Func<MqttAppMessage, Task>> { handler }, (_, list) =>
         {
             lock (list)
@@ -154,17 +147,52 @@ public sealed class MqttConnectionService : IMqttPublisher, IMqttSubscriber, IAs
         });
 
         await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
-        await _client.SubscribeAsync(new MqttTopicFilterBuilder().WithTopic(topicFilter).Build(), cancellationToken).ConfigureAwait(false);
+
+        if (_brokerSubscribedFilters.TryAdd(topicFilter, 0))
+        {
+            await _client.SubscribeAsync(new MqttTopicFilterBuilder().WithTopic(topicFilter).Build(), cancellationToken).ConfigureAwait(false);
+        }
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (_client.IsConnected)
+        try
         {
-            await _client.DisconnectAsync();
+            await _connectGate.WaitAsync().ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException)
+        {
+            return;
         }
 
-        _client.Dispose();
-        _connectGate.Dispose();
+        try
+        {
+            _disposed = true;
+            if (_client.IsConnected)
+            {
+                await _client.DisconnectAsync().ConfigureAwait(false);
+            }
+
+            _client.Dispose();
+        }
+        finally
+        {
+            try
+            {
+                _connectGate.Release();
+            }
+            catch (ObjectDisposedException)
+            {
+                // gate already disposed
+            }
+        }
+
+        try
+        {
+            _connectGate.Dispose();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
     }
 }

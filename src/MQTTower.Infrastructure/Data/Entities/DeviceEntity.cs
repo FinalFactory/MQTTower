@@ -3,6 +3,7 @@ namespace MQTTower.Infrastructure.Data.Entities;
 public sealed class DeviceEntity
 {
     public Guid Id { get; set; }
+    public Guid? BrokerId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string? Type { get; set; }
     public string? Location { get; set; }

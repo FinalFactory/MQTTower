@@ -7,6 +7,9 @@ namespace MQTTower.Infrastructure.Data;
 
 public sealed class EfUserService : IUserService
 {
+    /// <summary>Precomputed valid bcrypt hash so unknown users still run Verify (mitigates username timing oracle).</summary>
+    private const string DummyPasswordHash = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
+
     private readonly AppDbContext _db;
 
     public EfUserService(AppDbContext db)
@@ -19,10 +22,11 @@ public sealed class EfUserService : IUserService
         var row = await _db.AppUsers.AsNoTracking().FirstOrDefaultAsync(u => u.UserName == userName, cancellationToken).ConfigureAwait(false);
         if (row is null)
         {
+            _ = BCrypt.Net.BCrypt.Verify(password ?? string.Empty, DummyPasswordHash);
             return null;
         }
 
-        if (!BCrypt.Net.BCrypt.Verify(password, row.PasswordHash))
+        if (!BCrypt.Net.BCrypt.Verify(password ?? string.Empty, row.PasswordHash))
         {
             return null;
         }
@@ -54,16 +58,17 @@ public sealed class EfUserService : IUserService
         return rows.Select(Map).ToList();
     }
 
-    public async Task SetPasswordAsync(Guid userId, string newPassword, CancellationToken cancellationToken = default)
+    public async Task<bool> SetPasswordAsync(Guid userId, string newPassword, CancellationToken cancellationToken = default)
     {
         var row = await _db.AppUsers.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken).ConfigureAwait(false);
         if (row is null)
         {
-            return;
+            return false;
         }
 
         row.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        return true;
     }
 
     private static AppUser Map(AppUserEntity e) => new()

@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text;
+using Microsoft.Data.Sqlite;
 using MQTTower.Core.Interfaces;
 using Microsoft.Extensions.Options;
 using MQTTower.Infrastructure.Options;
@@ -45,6 +46,9 @@ public sealed class BackupService : IBackupService
         var db = zip.GetEntry("mqttower.db");
         if (db is not null)
         {
+            // Close pooled connections before replacing the database file on disk.
+            SqliteConnection.ClearAllPools();
+
             var path = SqlitePath();
             var dir = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(dir))

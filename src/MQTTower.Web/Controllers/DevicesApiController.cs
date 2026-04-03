@@ -18,7 +18,8 @@ public sealed class DevicesApiController : ControllerBase
     }
 
     [HttpGet]
-    public Task<IReadOnlyList<Device>> List(CancellationToken cancellationToken) => _devices.ListAsync(cancellationToken);
+    public Task<IReadOnlyList<Device>> List([FromQuery] Guid? brokerId, CancellationToken cancellationToken) =>
+        _devices.ListAsync(brokerId, cancellationToken);
 
     [HttpPost]
     [Authorize(Roles = nameof(AppUserRole.Admin))]

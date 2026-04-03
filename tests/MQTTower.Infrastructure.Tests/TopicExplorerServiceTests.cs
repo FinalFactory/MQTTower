@@ -1,7 +1,9 @@
 using System.Text;
 using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
 using MQTTower.Core.Mqtt;
 using MQTTower.Infrastructure.Monitoring;
+using MQTTower.Infrastructure.Options;
 using MQTTower.Infrastructure.Tests.Fakes;
 
 namespace MQTTower.Infrastructure.Tests;
@@ -11,7 +13,7 @@ public sealed class TopicExplorerServiceTests
     [Fact]
     public async Task Builds_tree_from_messages()
     {
-        var svc = new TopicExplorerService();
+        var svc = new TopicExplorerService(Microsoft.Extensions.Options.Options.Create(new MqttTowerOptions()), NullLogger<TopicExplorerService>.Instance);
         var sub = new FakeMqttSubscriber();
         svc.Attach(sub, CancellationToken.None);
         var handler = sub.Handlers["#"];

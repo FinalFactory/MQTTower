@@ -23,7 +23,9 @@ public sealed class EfUserServiceTests
         u.Should().NotBeNull();
         u!.UserName.Should().Be("u1");
 
-        await svc.SetPasswordAsync(u.Id, "newsecret");
+        (await svc.SetPasswordAsync(u.Id, "newsecret")).Should().BeTrue();
         (await svc.AuthenticateAsync("u1", "newsecret")).Should().NotBeNull();
+
+        (await svc.SetPasswordAsync(Guid.NewGuid(), "x")).Should().BeFalse();
     }
 }

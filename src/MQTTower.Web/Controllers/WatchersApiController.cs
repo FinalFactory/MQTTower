@@ -18,7 +18,8 @@ public sealed class WatchersApiController : ControllerBase
     }
 
     [HttpGet]
-    public Task<IReadOnlyList<TopicWatcher>> List(CancellationToken cancellationToken) => _watchers.ListAsync(cancellationToken);
+    public Task<IReadOnlyList<TopicWatcher>> List([FromQuery] Guid? brokerId, CancellationToken cancellationToken) =>
+        _watchers.ListAsync(brokerId, cancellationToken);
 
     [HttpPost]
     [Authorize(Roles = nameof(AppUserRole.Admin))]

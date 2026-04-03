@@ -1,12 +1,78 @@
 @page "/broker-config"
 @rendermode InteractiveServer
-@inject IBrokerConfigStore Config
+@implements IDisposable
+@inject IBrokerGatewayFactory GatewayFactory
+@inject BrokerContext BrokerCtx
+@inject ISnackbar Snackbar
+
 <PageTitle>Broker Config</PageTitle>
-<MudText Typo="Typo.h4">Broker Config</MudText>
-<MudTextField @bind-Value="_text" Lines="18" Variant="Variant.Outlined" Class="mt-4" />
-<MudButton Color="Color.Primary" Class="mt-2" OnClick="SaveAsync">Save</MudButton>
+
+@if (BrokerCtx.Selected is null)
+{
+    <MudAlert Severity="Severity.Info">Select a broker in the header.</MudAlert>
+}
+else
+{
+    <MudText Typo="Typo.h4">Broker Config</MudText>
+    <MudTextField @bind-Value="_text" Lines="18" Variant="Variant.Outlined" Class="mt-4" />
+    <MudButton Color="Color.Primary" Class="mt-2" OnClick="SaveAsync">Save</MudButton>
+}
+
 @code {
     private string _text = string.Empty;
-    protected override async Task OnInitializedAsync() => _text = await Config.ReadAsync();
-    private async Task SaveAsync() => await Config.WriteAsync(_text);
+
+    protected override async Task OnInitializedAsync()
+    {
+        BrokerCtx.Changed += OnBrokerChanged;
+        await LoadAsync().ConfigureAwait(false);
+    }
+
+    private void OnBrokerChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await LoadAsync().ConfigureAwait(false);
+            StateHasChanged();
+        });
+    }
+
+    private async Task LoadAsync()
+    {
+        if (BrokerCtx.Selected is null)
+        {
+            _text = string.Empty;
+            return;
+        }
+
+        try
+        {
+            _text = await BrokerGatewayHelper.WithGatewayAsync(
+                GatewayFactory,
+                BrokerCtx.Selected,
+                gw => gw.ReadConfigAsync(),
+                string.Empty).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        try
+        {
+            await BrokerGatewayHelper.WithGatewayAsync(GatewayFactory, BrokerCtx.Selected, gw => gw.WriteConfigAsync(_text)).ConfigureAwait(false);
+            Snackbar.Add("Saved", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    public void Dispose()
+    {
+        BrokerCtx.Changed -= OnBrokerChanged;
+    }
 }

@@ -1,4 +1,5 @@
 @inject ISchedulerService Scheduler
+@inject BrokerContext BrokerCtx
 
 <MudDialog>
     <DialogContent>
@@ -30,6 +31,7 @@
         _task = new ScheduledTask
         {
             Id = Initial.Id,
+            BrokerId = Initial.BrokerId ?? BrokerCtx.Selected?.Id,
             Name = Initial.Name,
             CronExpression = Initial.CronExpression,
             Topic = Initial.Topic,
@@ -44,6 +46,11 @@
 
     private async Task SaveAsync()
     {
+        if (_task.BrokerId is null)
+        {
+            _task.BrokerId = BrokerCtx.Selected?.Id;
+        }
+
         await Scheduler.UpsertAsync(_task).ConfigureAwait(false);
         MudDialog.Close(DialogResult.Ok(true));
     }

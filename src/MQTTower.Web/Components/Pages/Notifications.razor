@@ -68,8 +68,8 @@
     private async Task ShowAsync(string title, NotificationRule r)
     {
         var p = new DialogParameters { [nameof(NotificationRuleEditDialog.Initial)] = r };
-        var d = await DialogService.ShowAsync<NotificationRuleEditDialog>(title, p);
-        var res = await d.Result;
+        var d = (await DialogService.ShowAsync<NotificationRuleEditDialog>(title, p))!;
+        var res = (await d.Result!)!;
         if (!res.Canceled)
         {
             await LoadAsync();
@@ -79,8 +79,8 @@
     private async Task DeleteAsync(Guid id)
     {
         var p = new DialogParameters { [nameof(ConfirmDialog.Message)] = "Delete this rule?" };
-        var d = await DialogService.ShowAsync<ConfirmDialog>("Delete", p);
-        var r = await d.Result;
+        var d = (await DialogService.ShowAsync<ConfirmDialog>("Delete", p))!;
+        var r = (await d.Result!)!;
         if (r.Canceled || r.Data is not true)
         {
             return;

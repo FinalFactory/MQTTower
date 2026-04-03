@@ -1,5 +1,6 @@
 @using MQTTower.Core.Interfaces
-@inject IDynSecService DynSec
+@inject IBrokerGatewayFactory GatewayFactory
+@inject BrokerContext BrokerCtx
 
 <MudDialog>
     <DialogContent>
@@ -29,7 +30,8 @@
     {
         var roles = Split(_rolesCsv);
         var clients = Split(_clientsCsv);
-        await DynSec.CreateGroupAsync(_name, _description, roles, clients).ConfigureAwait(false);
+        await BrokerGatewayHelper.WithGatewayAsync(GatewayFactory, BrokerCtx.Selected, async gw =>
+            await gw.CreateGroupAsync(_name, _description, roles, clients).ConfigureAwait(false)).ConfigureAwait(false);
         MudDialog.Close(DialogResult.Ok(true));
     }
 

@@ -13,9 +13,13 @@ project.lock.json
 project.fragment.lock.json
 artifacts/
 
+## Local SQLite (dev)
+mqttower.db*
+
 ## IDE
 .vs/
 .idea/
+!.idea/runConfigurations/
 *.rsuser
 *.DotSettings.user
 

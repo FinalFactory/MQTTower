@@ -37,6 +37,26 @@ public sealed class FileBrokerConfigStore : IBrokerConfigStore
             File.Copy(path, path + ".bak", overwrite: true);
         }
 
-        await File.WriteAllTextAsync(path, content, cancellationToken).ConfigureAwait(false);
+        var dirName = Path.GetDirectoryName(path);
+        var tmp = Path.Combine(string.IsNullOrEmpty(dirName) ? "." : dirName, $".{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");
+        try
+        {
+            await File.WriteAllTextAsync(tmp, content, cancellationToken).ConfigureAwait(false);
+            File.Move(tmp, path, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(tmp))
+            {
+                try
+                {
+                    File.Delete(tmp);
+                }
+                catch
+                {
+                    // best-effort cleanup of temp file
+                }
+            }
+        }
     }
 }

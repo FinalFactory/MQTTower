@@ -45,7 +45,8 @@ public sealed class CronSchedulerService : BackgroundService, ISchedulerService
     {
         await using var scope = _scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var publisher = scope.ServiceProvider.GetRequiredService<IMqttPublisher>();
+        var registry = scope.ServiceProvider.GetRequiredService<IBrokerRegistry>();
+        var gatewayFactory = scope.ServiceProvider.GetRequiredService<IBrokerGatewayFactory>();
         var now = DateTime.UtcNow;
         var tasks = await db.ScheduledTasks.AsNoTracking().Where(t => t.Enabled).ToListAsync(cancellationToken).ConfigureAwait(false);
         foreach (var t in tasks)
@@ -57,18 +58,55 @@ public sealed class CronSchedulerService : BackgroundService, ISchedulerService
                 continue;
             }
 
-            var bytes = System.Text.Encoding.UTF8.GetBytes(t.Payload);
-            await publisher.PublishAsync(t.Topic, bytes, t.Qos, t.Retain, cancellationToken).ConfigureAwait(false);
             var following = cron.GetNextOccurrence(now.AddSeconds(1), TimeZoneInfo.Utc, inclusive: false) ?? now.AddMinutes(1);
-            _nextUtc[t.Id] = following;
+
+            try
+            {
+                var brokerId = t.BrokerId ?? (await registry.GetDefaultLocalAsync(cancellationToken).ConfigureAwait(false))?.Id;
+                if (brokerId is null)
+                {
+                    continue;
+                }
+
+                var profile = await registry.GetAsync(brokerId.Value, cancellationToken).ConfigureAwait(false);
+                if (profile is null)
+                {
+                    continue;
+                }
+
+                var gateway = gatewayFactory.Create(profile);
+                try
+                {
+                    var bytes = System.Text.Encoding.UTF8.GetBytes(t.Payload);
+                    await gateway.PublishAsync(t.Topic, bytes, t.Qos, t.Retain, cancellationToken).ConfigureAwait(false);
+                }
+                finally
+                {
+                    (gateway as IDisposable)?.Dispose();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Scheduled task {TaskId} publish failed", t.Id);
+            }
+            finally
+            {
+                _nextUtc[t.Id] = following;
+            }
         }
     }
 
-    public async Task<IReadOnlyList<ScheduledTask>> ListAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ScheduledTask>> ListAsync(Guid? brokerId = null, CancellationToken cancellationToken = default)
     {
         await using var scope = _scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var rows = await db.ScheduledTasks.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken).ConfigureAwait(false);
+        var q = db.ScheduledTasks.AsNoTracking().AsQueryable();
+        if (brokerId.HasValue)
+        {
+            q = q.Where(t => t.BrokerId == brokerId.Value);
+        }
+
+        var rows = await q.OrderBy(x => x.Name).ToListAsync(cancellationToken).ConfigureAwait(false);
         return rows.Select(Map).ToList();
     }
 
@@ -83,6 +121,7 @@ public sealed class CronSchedulerService : BackgroundService, ISchedulerService
             db.ScheduledTasks.Add(new ScheduledTaskEntity
             {
                 Id = id,
+                BrokerId = task.BrokerId,
                 Name = task.Name,
                 CronExpression = task.CronExpression,
                 Topic = task.Topic,
@@ -95,6 +134,7 @@ public sealed class CronSchedulerService : BackgroundService, ISchedulerService
         else
         {
             row.Name = task.Name;
+            row.BrokerId = task.BrokerId;
             row.CronExpression = task.CronExpression;
             row.Topic = task.Topic;
             row.Payload = task.Payload;
@@ -120,6 +160,7 @@ public sealed class CronSchedulerService : BackgroundService, ISchedulerService
     private static ScheduledTask Map(ScheduledTaskEntity e) => new()
     {
         Id = e.Id,
+        BrokerId = e.BrokerId,
         Name = e.Name,
         CronExpression = e.CronExpression,
         Topic = e.Topic,

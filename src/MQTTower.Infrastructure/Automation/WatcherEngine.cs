@@ -1,10 +1,13 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using MQTTower.Core;
 using MQTTower.Core.Interfaces;
 using MQTTower.Core.Models;
 using MQTTower.Infrastructure.Data;
 using MQTTower.Infrastructure.Data.Entities;
+using MQTTower.Infrastructure.Mqtt;
 
 namespace MQTTower.Infrastructure.Automation;
 
@@ -12,16 +15,28 @@ public sealed class WatcherEngine : IWatcherService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IMqttSubscriber _subscriber;
+    private readonly ILogger<WatcherEngine> _logger;
 
-    public WatcherEngine(IServiceScopeFactory scopeFactory, IMqttSubscriber subscriber)
+    public WatcherEngine(IServiceScopeFactory scopeFactory, IMqttSubscriber subscriber, ILogger<WatcherEngine> logger)
     {
         _scopeFactory = scopeFactory;
         _subscriber = subscriber;
+        _logger = logger;
     }
 
     public void Attach(CancellationToken cancellationToken)
     {
-        _ = _subscriber.SubscribeAsync("#", OnMessageAsync, cancellationToken);
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _subscriber.SubscribeAsync("#", OnMessageAsync, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Watcher MQTT subscribe failed");
+            }
+        }, cancellationToken);
     }
 
     private async Task OnMessageAsync(Core.Mqtt.MqttAppMessage msg)
@@ -33,12 +48,17 @@ public sealed class WatcherEngine : IWatcherService
         var watchers = await db.TopicWatchers.AsNoTracking().Where(w => w.Enabled).ToListAsync().ConfigureAwait(false);
         foreach (var w in watchers)
         {
-            if (!msg.Topic.StartsWith(w.TopicPattern, StringComparison.OrdinalIgnoreCase) && !TopicMatches(msg.Topic, w.TopicPattern))
+            if (!IsEligibleForLocalWatcher(w.BrokerId))
             {
                 continue;
             }
 
-            if (!Evaluate(w.Condition, text))
+            if (!MqttTopicMatcher.TopicMatches(msg.Topic, w.TopicPattern))
+            {
+                continue;
+            }
+
+            if (!EvaluateCondition(w.Condition, text))
             {
                 continue;
             }
@@ -47,12 +67,11 @@ public sealed class WatcherEngine : IWatcherService
         }
     }
 
-    private static bool TopicMatches(string topic, string pattern)
-    {
-        return topic.Contains(pattern, StringComparison.OrdinalIgnoreCase);
-    }
+    /// <summary>Remote-only watchers (non-default broker id) are not evaluated on the dashboard host.</summary>
+    internal static bool IsEligibleForLocalWatcher(Guid? brokerId) =>
+        !brokerId.HasValue || brokerId.Value == BrokerConstants.DefaultLocalBrokerId;
 
-    private static bool Evaluate(string condition, string payload)
+    internal static bool EvaluateCondition(string condition, string payload)
     {
         if (string.IsNullOrWhiteSpace(condition))
         {
@@ -62,14 +81,21 @@ public sealed class WatcherEngine : IWatcherService
         return payload.Contains(condition, StringComparison.OrdinalIgnoreCase);
     }
 
-    public async Task<IReadOnlyList<TopicWatcher>> ListAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<TopicWatcher>> ListAsync(Guid? brokerId = null, CancellationToken cancellationToken = default)
     {
         await using var scope = _scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var rows = await db.TopicWatchers.AsNoTracking().OrderBy(w => w.Name).ToListAsync(cancellationToken).ConfigureAwait(false);
+        var q = db.TopicWatchers.AsNoTracking().AsQueryable();
+        if (brokerId.HasValue)
+        {
+            q = q.Where(w => w.BrokerId == brokerId.Value);
+        }
+
+        var rows = await q.OrderBy(w => w.Name).ToListAsync(cancellationToken).ConfigureAwait(false);
         return rows.Select(r => new TopicWatcher
         {
             Id = r.Id,
+            BrokerId = r.BrokerId,
             Name = r.Name,
             TopicPattern = r.TopicPattern,
             Condition = r.Condition,
@@ -89,6 +115,7 @@ public sealed class WatcherEngine : IWatcherService
             db.TopicWatchers.Add(new TopicWatcherEntity
             {
                 Id = watcher.Id == Guid.Empty ? Guid.NewGuid() : watcher.Id,
+                BrokerId = watcher.BrokerId,
                 Name = watcher.Name,
                 TopicPattern = watcher.TopicPattern,
                 Condition = watcher.Condition,
@@ -100,6 +127,7 @@ public sealed class WatcherEngine : IWatcherService
         else
         {
             row.Name = watcher.Name;
+            row.BrokerId = watcher.BrokerId;
             row.TopicPattern = watcher.TopicPattern;
             row.Condition = watcher.Condition;
             row.ActionType = watcher.ActionType;

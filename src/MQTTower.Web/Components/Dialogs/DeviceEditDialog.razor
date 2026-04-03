@@ -1,4 +1,5 @@
 @inject IDeviceRegistry Registry
+@inject BrokerContext BrokerCtx
 
 <MudDialog>
     <DialogContent>
@@ -31,6 +32,7 @@
         _d = new Device
         {
             Id = Initial.Id,
+            BrokerId = Initial.BrokerId,
             Name = Initial.Name,
             Type = Initial.Type,
             Location = Initial.Location,
@@ -46,6 +48,11 @@
 
     private async Task SaveAsync()
     {
+        if (_d.Id == Guid.Empty && _d.BrokerId is null)
+        {
+            _d.BrokerId = BrokerCtx.Selected?.Id;
+        }
+
         await Registry.AddOrUpdateAsync(_d).ConfigureAwait(false);
         MudDialog.Close(DialogResult.Ok(true));
     }

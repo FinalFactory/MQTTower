@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using MQTTower.Core.Interfaces;
 using MQTTower.Core.Models;
 using MQTTower.Infrastructure.Data;
@@ -10,11 +11,13 @@ public sealed class NotificationRouter : INotificationRouter
 {
     private readonly AppDbContext _db;
     private readonly IEnumerable<INotificationChannel> _channels;
+    private readonly ILogger<NotificationRouter> _logger;
 
-    public NotificationRouter(AppDbContext db, IEnumerable<INotificationChannel> channels)
+    public NotificationRouter(AppDbContext db, IEnumerable<INotificationChannel> channels, ILogger<NotificationRouter> logger)
     {
         _db = db;
         _channels = channels;
+        _logger = logger;
     }
 
     public async Task DispatchAsync(string triggerType, string payloadJson, CancellationToken cancellationToken = default)
@@ -28,10 +31,29 @@ public sealed class NotificationRouter : INotificationRouter
             var channel = _channels.FirstOrDefault(c => c.ChannelId == rule.Channel);
             if (channel is null)
             {
+                _logger.LogWarning("No notification channel registered for id {ChannelId} (rule {RuleName})", rule.Channel, rule.Name);
                 continue;
             }
 
-            await channel.SendAsync(rule.Name, payloadJson, cancellationToken).ConfigureAwait(false);
+            const int maxAttempts = 2;
+            for (var attempt = 1; attempt <= maxAttempts; attempt++)
+            {
+                try
+                {
+                    await channel.SendAsync(rule.Name, payloadJson, cancellationToken).ConfigureAwait(false);
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Notification send failed for rule {RuleName} channel {Channel} attempt {Attempt}/{Max}", rule.Name, rule.Channel, attempt, maxAttempts);
+                    if (attempt == maxAttempts)
+                    {
+                        break;
+                    }
+
+                    await Task.Delay(TimeSpan.FromMilliseconds(50 * attempt), cancellationToken).ConfigureAwait(false);
+                }
+            }
         }
     }
 

@@ -1,6 +1,8 @@
 @page "/roles"
 @rendermode InteractiveServer
-@inject IDynSecService DynSec
+@implements IDisposable
+@inject IBrokerGatewayFactory GatewayFactory
+@inject BrokerContext BrokerCtx
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 
@@ -10,32 +12,39 @@
     <MudText Typo="Typo.h4">Roles</MudText>
     <AuthorizeView Roles="Admin">
         <Authorized>
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateAsync">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateAsync" Disabled="@(BrokerCtx.Selected is null)">
                 Add role
             </MudButton>
         </Authorized>
     </AuthorizeView>
 </MudStack>
 
-<MudTable Items="@FilteredItems" Hover="true" Dense="true" Loading="_loading">
-    <ToolBarContent>
-        <MudTextField @bind-Value="_search" Placeholder="Search" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" />
-    </ToolBarContent>
-    <HeaderContent>
-        <MudTh>Name</MudTh>
-        <MudTh Style="text-align:right">Actions</MudTh>
-    </HeaderContent>
-    <RowTemplate Context="row">
-        <MudTd DataLabel="Name">@row.Name</MudTd>
-        <MudTd DataLabel="Actions" Style="text-align:right">
-            <AuthorizeView Roles="Admin">
-                <Authorized>
-                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" aria-label="delete" OnClick="@(() => DeleteAsync(row.Name))" />
-                </Authorized>
-            </AuthorizeView>
-        </MudTd>
-    </RowTemplate>
-</MudTable>
+@if (BrokerCtx.Selected is null)
+{
+    <MudAlert Severity="Severity.Info">Select a broker in the header.</MudAlert>
+}
+else
+{
+    <MudTable Items="@FilteredItems" Hover="true" Dense="true" Loading="_loading">
+        <ToolBarContent>
+            <MudTextField @bind-Value="_search" Placeholder="Search" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" />
+        </ToolBarContent>
+        <HeaderContent>
+            <MudTh>Name</MudTh>
+            <MudTh Style="text-align:right">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate Context="row">
+            <MudTd DataLabel="Name">@row.Name</MudTd>
+            <MudTd DataLabel="Actions" Style="text-align:right">
+                <AuthorizeView Roles="Admin">
+                    <Authorized>
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" aria-label="delete" OnClick="@(() => DeleteAsync(row.Name))" />
+                    </Authorized>
+                </AuthorizeView>
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
 
 @code {
     private List<MqttRole> _items = new();
@@ -47,14 +56,37 @@
             ? _items
             : _items.Where(x => x.Name.Contains(_search, StringComparison.OrdinalIgnoreCase));
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        BrokerCtx.Changed += OnBrokerChanged;
+        await LoadAsync().ConfigureAwait(false);
+    }
+
+    private void OnBrokerChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await LoadAsync().ConfigureAwait(false);
+            StateHasChanged();
+        });
+    }
 
     private async Task LoadAsync()
     {
+        if (BrokerCtx.Selected is null)
+        {
+            _items = new List<MqttRole>();
+            return;
+        }
+
         _loading = true;
         try
         {
-            _items = (await DynSec.ListRolesAsync().ConfigureAwait(false)).ToList();
+            _items = (await BrokerGatewayHelper.WithGatewayAsync(
+                GatewayFactory,
+                BrokerCtx.Selected,
+                gw => gw.ListRolesAsync(),
+                Array.Empty<MqttRole>()).ConfigureAwait(false)).ToList();
         }
         catch (Exception ex)
         {
@@ -68,19 +100,19 @@
 
     private async Task OpenCreateAsync()
     {
-        var d = await DialogService.ShowAsync<RoleEditDialog>("New role");
-        var r = await d.Result;
+        var d = (await DialogService.ShowAsync<RoleEditDialog>("New role").ConfigureAwait(false))!;
+        var r = (await d.Result!.ConfigureAwait(false))!;
         if (!r.Canceled)
         {
-            await LoadAsync();
+            await LoadAsync().ConfigureAwait(false);
         }
     }
 
     private async Task DeleteAsync(string name)
     {
         var p = new DialogParameters { [nameof(ConfirmDialog.Message)] = $"Delete role {name}?" };
-        var d = await DialogService.ShowAsync<ConfirmDialog>("Delete role", p);
-        var r = await d.Result;
+        var d = (await DialogService.ShowAsync<ConfirmDialog>("Delete role", p).ConfigureAwait(false))!;
+        var r = (await d.Result!.ConfigureAwait(false))!;
         if (r.Canceled || r.Data is not true)
         {
             return;
@@ -88,12 +120,17 @@
 
         try
         {
-            await DynSec.DeleteRoleAsync(name).ConfigureAwait(false);
-            await LoadAsync();
+            await BrokerGatewayHelper.WithGatewayAsync(GatewayFactory, BrokerCtx.Selected, gw => gw.DeleteRoleAsync(name)).ConfigureAwait(false);
+            await LoadAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             Snackbar.Add(ex.Message, Severity.Error);
         }
+    }
+
+    public void Dispose()
+    {
+        BrokerCtx.Changed -= OnBrokerChanged;
     }
 }

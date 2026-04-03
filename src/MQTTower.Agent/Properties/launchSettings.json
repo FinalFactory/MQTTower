@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json.schemastore.org/launchsettings.json",
+  "profiles": {
+    "http-agent-a": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "Agent__HttpsPort": "0",
+        "Agent__HttpPort": "5080",
+        "Agent__ApiKey": "debug-agent-a",
+        "Agent__DashboardUrl": "http://localhost:5209",
+        "Agent__RegistrationToken": "dev-registration-secret",
+        "Agent__AutoRegister": "true",
+        "Agent__PublicAgentUrl": "http://localhost:5080",
+        "MQTTower__BrokerHost": "127.0.0.1",
+        "MQTTower__BrokerPort": "1883",
+        "MQTTower__MosquittoConfigPath": "../../docker/mosquitto/mosquitto.conf",
+        "MQTTower__MosquittoLogPath": "mosquitto-agent.log"
+      }
+    },
+    "http-agent-b": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "Agent__HttpsPort": "0",
+        "Agent__HttpPort": "5081",
+        "Agent__ApiKey": "debug-agent-b",
+        "Agent__DashboardUrl": "http://localhost:5209",
+        "Agent__RegistrationToken": "dev-registration-secret",
+        "Agent__AutoRegister": "true",
+        "Agent__PublicAgentUrl": "http://localhost:5081",
+        "MQTTower__BrokerHost": "127.0.0.1",
+        "MQTTower__BrokerPort": "1883",
+        "MQTTower__MosquittoConfigPath": "../../docker/mosquitto/mosquitto.conf",
+        "MQTTower__MosquittoLogPath": "mosquitto-agent.log"
+      }
+    }
+  }
+}

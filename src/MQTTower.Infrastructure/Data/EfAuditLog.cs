@@ -30,25 +30,81 @@ public sealed class EfAuditLog : IAuditLog
 
     public async Task<IReadOnlyList<AuditEntry>> QueryAsync(DateTimeOffset? from, DateTimeOffset? to, string? userName, int skip, int take, CancellationToken cancellationToken = default)
     {
-        var q = _db.AuditEntries.AsNoTracking().AsQueryable();
-        if (from is not null)
-        {
-            q = q.Where(a => a.Timestamp >= from);
-        }
+        // SQLite stores Timestamp as TEXT; EF Core cannot translate DateTimeOffset range filters in LINQ.
+        // Order, paging, and filters are in SQL (see EfMetricStore.QueryAsync, PruneOlderThanAsync).
+        var hasUser = !string.IsNullOrWhiteSpace(userName);
+        var f = from.HasValue;
+        var t = to.HasValue;
 
-        if (to is not null)
+        IQueryable<AuditEntryEntity> q = (f, t, hasUser) switch
         {
-            q = q.Where(a => a.Timestamp <= to);
-        }
+            (true, true, true) => _db.AuditEntries.FromSqlInterpolated(
+                $"""
+                SELECT Id, Timestamp, UserName, Action, EntityType, EntityName, Details
+                FROM AuditEntries
+                WHERE Timestamp >= {from!.Value} AND Timestamp <= {to!.Value} AND UserName = {userName!}
+                ORDER BY Timestamp DESC
+                LIMIT {take} OFFSET {skip}
+                """),
+            (true, true, false) => _db.AuditEntries.FromSqlInterpolated(
+                $"""
+                SELECT Id, Timestamp, UserName, Action, EntityType, EntityName, Details
+                FROM AuditEntries
+                WHERE Timestamp >= {from!.Value} AND Timestamp <= {to!.Value}
+                ORDER BY Timestamp DESC
+                LIMIT {take} OFFSET {skip}
+                """),
+            (true, false, true) => _db.AuditEntries.FromSqlInterpolated(
+                $"""
+                SELECT Id, Timestamp, UserName, Action, EntityType, EntityName, Details
+                FROM AuditEntries
+                WHERE Timestamp >= {from!.Value} AND UserName = {userName!}
+                ORDER BY Timestamp DESC
+                LIMIT {take} OFFSET {skip}
+                """),
+            (true, false, false) => _db.AuditEntries.FromSqlInterpolated(
+                $"""
+                SELECT Id, Timestamp, UserName, Action, EntityType, EntityName, Details
+                FROM AuditEntries
+                WHERE Timestamp >= {from!.Value}
+                ORDER BY Timestamp DESC
+                LIMIT {take} OFFSET {skip}
+                """),
+            (false, true, true) => _db.AuditEntries.FromSqlInterpolated(
+                $"""
+                SELECT Id, Timestamp, UserName, Action, EntityType, EntityName, Details
+                FROM AuditEntries
+                WHERE Timestamp <= {to!.Value} AND UserName = {userName!}
+                ORDER BY Timestamp DESC
+                LIMIT {take} OFFSET {skip}
+                """),
+            (false, true, false) => _db.AuditEntries.FromSqlInterpolated(
+                $"""
+                SELECT Id, Timestamp, UserName, Action, EntityType, EntityName, Details
+                FROM AuditEntries
+                WHERE Timestamp <= {to!.Value}
+                ORDER BY Timestamp DESC
+                LIMIT {take} OFFSET {skip}
+                """),
+            (false, false, true) => _db.AuditEntries.FromSqlInterpolated(
+                $"""
+                SELECT Id, Timestamp, UserName, Action, EntityType, EntityName, Details
+                FROM AuditEntries
+                WHERE UserName = {userName!}
+                ORDER BY Timestamp DESC
+                LIMIT {take} OFFSET {skip}
+                """),
+            (false, false, false) => _db.AuditEntries.FromSqlInterpolated(
+                $"""
+                SELECT Id, Timestamp, UserName, Action, EntityType, EntityName, Details
+                FROM AuditEntries
+                ORDER BY Timestamp DESC
+                LIMIT {take} OFFSET {skip}
+                """),
+        };
 
-        if (!string.IsNullOrWhiteSpace(userName))
-        {
-            q = q.Where(a => a.UserName == userName);
-        }
-
-        return await q.OrderByDescending(a => a.Timestamp)
-            .Skip(skip)
-            .Take(take)
+        return await q
+            .AsNoTracking()
             .Select(a => new AuditEntry
             {
                 Id = a.Id,
@@ -60,5 +116,12 @@ public sealed class EfAuditLog : IAuditLog
                 Details = a.Details,
             })
             .ToListAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task PruneOlderThanAsync(DateTimeOffset cutoff, CancellationToken cancellationToken = default)
+    {
+        await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"DELETE FROM AuditEntries WHERE Timestamp < {cutoff}",
+            cancellationToken).ConfigureAwait(false);
     }
 }

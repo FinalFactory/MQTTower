@@ -24,6 +24,7 @@ public sealed class EfDeviceRegistry : IDeviceRegistry
         else
         {
             row.Name = device.Name;
+            row.BrokerId = device.BrokerId;
             row.Type = device.Type;
             row.Location = device.Location;
             row.Firmware = device.Firmware;
@@ -47,15 +48,22 @@ public sealed class EfDeviceRegistry : IDeviceRegistry
         return row is null ? null : Map(row);
     }
 
-    public async Task<IReadOnlyList<Device>> ListAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<Device>> ListAsync(Guid? brokerId = null, CancellationToken cancellationToken = default)
     {
-        var rows = await _db.Devices.AsNoTracking().OrderBy(d => d.Name).ToListAsync(cancellationToken).ConfigureAwait(false);
+        var q = _db.Devices.AsNoTracking().AsQueryable();
+        if (brokerId.HasValue)
+        {
+            q = q.Where(d => d.BrokerId == brokerId.Value);
+        }
+
+        var rows = await q.OrderBy(d => d.Name).ToListAsync(cancellationToken).ConfigureAwait(false);
         return rows.Select(Map).ToList();
     }
 
     private static DeviceEntity Map(Device d) => new()
     {
         Id = d.Id,
+        BrokerId = d.BrokerId,
         Name = d.Name,
         Type = d.Type,
         Location = d.Location,
@@ -69,6 +77,7 @@ public sealed class EfDeviceRegistry : IDeviceRegistry
     private static Device Map(DeviceEntity e) => new()
     {
         Id = e.Id,
+        BrokerId = e.BrokerId,
         Name = e.Name,
         Type = e.Type,
         Location = e.Location,

@@ -1,4 +1,5 @@
 @inject IWatcherService WatcherService
+@inject BrokerContext BrokerCtx
 
 <MudDialog>
     <DialogContent>
@@ -28,6 +29,7 @@
         _w = new TopicWatcher
         {
             Id = Initial.Id,
+            BrokerId = Initial.BrokerId ?? BrokerCtx.Selected?.Id,
             Name = Initial.Name,
             TopicPattern = Initial.TopicPattern,
             Condition = Initial.Condition,
@@ -41,6 +43,11 @@
 
     private async Task SaveAsync()
     {
+        if (_w.BrokerId is null)
+        {
+            _w.BrokerId = BrokerCtx.Selected?.Id;
+        }
+
         await WatcherService.UpsertAsync(_w).ConfigureAwait(false);
         MudDialog.Close(DialogResult.Ok(true));
     }

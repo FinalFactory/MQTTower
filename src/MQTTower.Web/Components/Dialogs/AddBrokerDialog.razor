@@ -1,0 +1,32 @@
+<MudDialog>
+    <DialogContent>
+        <MudTextField @bind-Value="_name" Label="Name" Variant="Variant.Outlined" Class="mb-2" />
+        <MudTextField @bind-Value="_url" Label="Agent URL (https://host:5100/)" Variant="Variant.Outlined" Class="mb-2" />
+        <MudTextField @bind-Value="_key" Label="API key" Variant="Variant.Outlined" InputType="InputType.Password" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">Add</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    private string _name = string.Empty;
+    private string _url = string.Empty;
+    private string _key = string.Empty;
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_name) || string.IsNullOrWhiteSpace(_url) || string.IsNullOrWhiteSpace(_key))
+        {
+            return;
+        }
+
+        MudDialog.Close(DialogResult.Ok((_name.Trim(), _url.Trim(), _key.Trim())));
+    }
+}

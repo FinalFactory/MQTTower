@@ -1,0 +1,43 @@
+@using MQTTower.Core.Models
+<MudDialog>
+    <DialogContent>
+        <MudTextField @bind-Value="_name" Label="Name" Variant="Variant.Outlined" Class="mb-2" />
+        <MudTextField @bind-Value="_url" Label="Agent URL (https://host:5100/)" Variant="Variant.Outlined" Class="mb-2" />
+        <MudTextField @bind-Value="_notes" Label="Notes" Variant="Variant.Outlined" Lines="3" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter]
+    public BrokerProfile Initial { get; set; } = default!;
+
+    private string _name = string.Empty;
+    private string _url = string.Empty;
+    private string _notes = string.Empty;
+
+    protected override void OnParametersSet()
+    {
+        _name = Initial.Name;
+        _url = Initial.AgentUrl;
+        _notes = Initial.Notes ?? string.Empty;
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_name) || string.IsNullOrWhiteSpace(_url))
+        {
+            return;
+        }
+
+        MudDialog.Close(DialogResult.Ok((_name.Trim(), _url.Trim(), _notes.Trim())));
+    }
+}

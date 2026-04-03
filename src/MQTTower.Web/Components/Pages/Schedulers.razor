@@ -1,6 +1,9 @@
 @page "/schedulers"
 @rendermode InteractiveServer
+@implements IDisposable
+@inject BrokerContext BrokerCtx
 @inject ISchedulerService Scheduler
+@inject IBrokerRegistry BrokerRegistry
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 
@@ -10,13 +13,17 @@
     <MudText Typo="Typo.h4">Schedulers</MudText>
     <AuthorizeView Roles="Admin">
         <Authorized>
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateAsync">Add task</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateAsync" Disabled="@(BrokerCtx.Selected is null)">Add task</MudButton>
         </Authorized>
     </AuthorizeView>
 </MudStack>
 
 <MudTable Items="@_items" Hover="true" Dense="true" Loading="_loading">
     <HeaderContent>
+        @if (BrokerCtx.Selected is null)
+        {
+            <MudTh>Broker</MudTh>
+        }
         <MudTh>Name</MudTh>
         <MudTh>Cron</MudTh>
         <MudTh>Topic</MudTh>
@@ -24,6 +31,10 @@
         <MudTh Style="text-align:right">Actions</MudTh>
     </HeaderContent>
     <RowTemplate Context="row">
+        @if (BrokerCtx.Selected is null)
+        {
+            <MudTd>@BrokerLabel(row.BrokerId)</MudTd>
+        }
         <MudTd>@row.Name</MudTd>
         <MudTd Style="font-family:monospace">@row.CronExpression</MudTd>
         <MudTd Style="word-break:break-all">@row.Topic</MudTd>
@@ -51,15 +62,37 @@
 @code {
     private List<ScheduledTask> _items = new();
     private bool _loading;
+    private Dictionary<Guid, string> _brokerNames = new();
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        BrokerCtx.Changed += OnBrokerChanged;
+        await LoadAsync().ConfigureAwait(false);
+    }
+
+    public void Dispose() => BrokerCtx.Changed -= OnBrokerChanged;
+
+    private void OnBrokerChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await LoadAsync().ConfigureAwait(false);
+            StateHasChanged();
+        });
+    }
 
     private async Task LoadAsync()
     {
         _loading = true;
         try
         {
-            _items = (await Scheduler.ListAsync().ConfigureAwait(false)).ToList();
+            if (BrokerCtx.Selected is null)
+            {
+                var brokers = await BrokerRegistry.ListAsync().ConfigureAwait(false);
+                _brokerNames = brokers.ToDictionary(b => b.Id, b => b.Name);
+            }
+
+            _items = (await Scheduler.ListAsync(BrokerCtx.Selected?.Id).ConfigureAwait(false)).ToList();
         }
         finally
         {
@@ -67,9 +100,12 @@
         }
     }
 
+    private string BrokerLabel(Guid? brokerId) =>
+        brokerId is null ? "—" : (_brokerNames.TryGetValue(brokerId.Value, out var n) ? n : brokerId.Value.ToString());
+
     private async Task OpenCreateAsync()
     {
-        var task = new ScheduledTask { CronExpression = "0 * * * *", Topic = "mqttower/test", Payload = "{}" };
+        var task = new ScheduledTask { BrokerId = BrokerCtx.Selected?.Id, CronExpression = "0 * * * *", Topic = "mqttower/test", Payload = "{}" };
         await ShowEditDialogAsync("New scheduled task", task);
     }
 
@@ -78,8 +114,8 @@
     private async Task ShowEditDialogAsync(string title, ScheduledTask task)
     {
         var p = new DialogParameters { [nameof(ScheduledTaskEditDialog.Initial)] = task };
-        var d = await DialogService.ShowAsync<ScheduledTaskEditDialog>(title, p);
-        var r = await d.Result;
+        var d = (await DialogService.ShowAsync<ScheduledTaskEditDialog>(title, p))!;
+        var r = (await d.Result!)!;
         if (!r.Canceled)
         {
             await LoadAsync();
@@ -103,8 +139,8 @@
     private async Task DeleteAsync(Guid id)
     {
         var p = new DialogParameters { [nameof(ConfirmDialog.Message)] = "Delete this scheduled task?" };
-        var d = await DialogService.ShowAsync<ConfirmDialog>("Delete", p);
-        var r = await d.Result;
+        var d = (await DialogService.ShowAsync<ConfirmDialog>("Delete", p))!;
+        var r = (await d.Result!)!;
         if (r.Canceled || r.Data is not true)
         {
             return;

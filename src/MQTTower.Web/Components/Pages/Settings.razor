@@ -3,26 +3,34 @@
 @inject IOptionsSnapshot<MqttTowerOptions> TowerOptions
 @inject IUserService Users
 @inject IDialogService DialogService
+@inject IRegistrationTokenService RegistrationTokens
 
 <PageTitle>Settings</PageTitle>
 
 <MudText Typo="Typo.h4" Class="mb-4">Settings</MudText>
 
 <MudPaper Class="pa-4 mqtt-chart-card mb-4" Elevation="2">
-    <MudText Typo="Typo.subtitle1" Class="mb-2">Broker</MudText>
+    <MudText Typo="Typo.subtitle1" Class="mb-2">Application</MudText>
     <MudSimpleTable Dense="true">
         <tbody>
-            <tr><td>Host</td><td>@_o.BrokerHost</td></tr>
-            <tr><td>Port</td><td>@_o.BrokerPort</td></tr>
-            <tr><td>Control topic</td><td>@_o.ControlTopic</td></tr>
             <tr><td>Metrics retention (days)</td><td>@_o.MetricsRetentionDays</td></tr>
+            <tr><td>Agent registration</td><td>@(string.IsNullOrEmpty(_o.RegistrationSecret) ? "not set" : "configured")</td></tr>
         </tbody>
     </MudSimpleTable>
-    <MudText Typo="Typo.caption" Class="mqtt-muted mt-2">Override via environment variables or appsettings.json (requires restart).</MudText>
+    <MudText Typo="Typo.caption" Class="mqtt-muted mt-2">Broker connections are configured per agent or local profile. Override via environment variables or appsettings.json (requires restart).</MudText>
 </MudPaper>
 
 <AuthorizeView Roles="Admin">
     <Authorized>
+        <MudPaper Class="pa-4 mqtt-chart-card mb-4" Elevation="2">
+            <MudText Typo="Typo.subtitle1" Class="mb-2">One-time agent registration</MudText>
+            <MudText Typo="Typo.caption" Class="mqtt-muted mb-2">Mint a token for the agent <code>RegistrationToken</code> field when the shared secret is not set, or use alongside <code>MQTTower:RegistrationSecret</code>.</MudText>
+            <MudButton Color="Color.Primary" Size="Size.Small" StartIcon="@Icons.Material.Filled.Key" OnClick="MintTokenAsync">Mint token</MudButton>
+            @if (!string.IsNullOrEmpty(_mintedToken))
+            {
+                <MudText Typo="Typo.body2" Class="mt-2"><code>@_mintedToken</code> — copy now; it cannot be shown again.</MudText>
+            }
+        </MudPaper>
         <MudPaper Class="pa-4 mqtt-chart-card" Elevation="2">
             <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-2">
                 <MudText Typo="Typo.subtitle1">Web users</MudText>
@@ -49,6 +57,7 @@
 @code {
     private MqttTowerOptions _o = new();
     private List<AppUser> _users = new();
+    private string? _mintedToken;
 
     protected override async Task OnInitializedAsync()
     {
@@ -63,8 +72,8 @@
 
     private async Task AddUserAsync()
     {
-        var d = await DialogService.ShowAsync<UserCreateDialog>("New user");
-        var r = await d.Result;
+        var d = (await DialogService.ShowAsync<UserCreateDialog>("New user"))!;
+        var r = (await d.Result!)!;
         if (!r.Canceled)
         {
             await ReloadUsersAsync();
@@ -74,8 +83,8 @@
     private async Task DeleteUserAsync(Guid id)
     {
         var p = new DialogParameters { [nameof(ConfirmDialog.Message)] = "Delete this user?" };
-        var d = await DialogService.ShowAsync<ConfirmDialog>("Delete user", p);
-        var r = await d.Result;
+        var d = (await DialogService.ShowAsync<ConfirmDialog>("Delete user", p))!;
+        var r = (await d.Result!)!;
         if (r.Canceled || r.Data is not true)
         {
             return;
@@ -83,5 +92,11 @@
 
         await Users.DeleteAsync(id).ConfigureAwait(false);
         await ReloadUsersAsync();
+    }
+
+    private async Task MintTokenAsync()
+    {
+        _mintedToken = await RegistrationTokens.MintAsync(null).ConfigureAwait(false);
+        await InvokeAsync(StateHasChanged);
     }
 }

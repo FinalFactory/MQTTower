@@ -1,6 +1,9 @@
 @page "/watchers"
 @rendermode InteractiveServer
+@implements IDisposable
+@inject BrokerContext BrokerCtx
 @inject IWatcherService WatcherService
+@inject IBrokerRegistry BrokerRegistry
 @inject IDialogService DialogService
 
 <PageTitle>Watchers</PageTitle>
@@ -9,13 +12,24 @@
     <MudText Typo="Typo.h4">Topic watchers</MudText>
     <AuthorizeView Roles="Admin">
         <Authorized>
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateAsync">Add watcher</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateAsync" Disabled="@(BrokerCtx.Selected is null)">Add watcher</MudButton>
         </Authorized>
     </AuthorizeView>
 </MudStack>
 
+@if (BrokerCtx.Selected is not null && !BrokerCtx.Selected.UseLocalServices)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-4" Dense="true">
+        Watchers for this broker are evaluated on the agent host, not on this dashboard server.
+    </MudAlert>
+}
+
 <MudTable Items="@_items" Hover="true" Dense="true" Loading="_loading">
     <HeaderContent>
+        @if (BrokerCtx.Selected is null)
+        {
+            <MudTh>Broker</MudTh>
+        }
         <MudTh>Name</MudTh>
         <MudTh>Topic</MudTh>
         <MudTh>Condition</MudTh>
@@ -23,6 +37,10 @@
         <MudTh Style="text-align:right">Actions</MudTh>
     </HeaderContent>
     <RowTemplate Context="row">
+        @if (BrokerCtx.Selected is null)
+        {
+            <MudTd>@BrokerLabel(row.BrokerId)</MudTd>
+        }
         <MudTd>@row.Name</MudTd>
         <MudTd Style="word-break:break-all">@row.TopicPattern</MudTd>
         <MudTd>@row.Condition</MudTd>
@@ -41,15 +59,37 @@
 @code {
     private List<TopicWatcher> _items = new();
     private bool _loading;
+    private Dictionary<Guid, string> _brokerNames = new();
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        BrokerCtx.Changed += OnBrokerChanged;
+        await LoadAsync().ConfigureAwait(false);
+    }
+
+    public void Dispose() => BrokerCtx.Changed -= OnBrokerChanged;
+
+    private void OnBrokerChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await LoadAsync().ConfigureAwait(false);
+            StateHasChanged();
+        });
+    }
 
     private async Task LoadAsync()
     {
         _loading = true;
         try
         {
-            _items = (await WatcherService.ListAsync().ConfigureAwait(false)).ToList();
+            if (BrokerCtx.Selected is null)
+            {
+                var brokers = await BrokerRegistry.ListAsync().ConfigureAwait(false);
+                _brokerNames = brokers.ToDictionary(b => b.Id, b => b.Name);
+            }
+
+            _items = (await WatcherService.ListAsync(BrokerCtx.Selected?.Id).ConfigureAwait(false)).ToList();
         }
         finally
         {
@@ -57,9 +97,12 @@
         }
     }
 
+    private string BrokerLabel(Guid? brokerId) =>
+        brokerId is null ? "—" : (_brokerNames.TryGetValue(brokerId.Value, out var n) ? n : brokerId.Value.ToString());
+
     private async Task OpenCreateAsync()
     {
-        var w = new TopicWatcher { Name = "New watcher", TopicPattern = "mqttower/#", Condition = string.Empty };
+        var w = new TopicWatcher { BrokerId = BrokerCtx.Selected?.Id, Name = "New watcher", TopicPattern = "mqttower/#", Condition = string.Empty };
         await ShowAsync("New watcher", w);
     }
 
@@ -68,8 +111,8 @@
     private async Task ShowAsync(string title, TopicWatcher w)
     {
         var p = new DialogParameters { [nameof(WatcherEditDialog.Initial)] = w };
-        var d = await DialogService.ShowAsync<WatcherEditDialog>(title, p);
-        var r = await d.Result;
+        var d = (await DialogService.ShowAsync<WatcherEditDialog>(title, p))!;
+        var r = (await d.Result!)!;
         if (!r.Canceled)
         {
             await LoadAsync();
@@ -79,8 +122,8 @@
     private async Task DeleteAsync(Guid id)
     {
         var p = new DialogParameters { [nameof(ConfirmDialog.Message)] = "Delete this watcher?" };
-        var d = await DialogService.ShowAsync<ConfirmDialog>("Delete", p);
-        var r = await d.Result;
+        var d = (await DialogService.ShowAsync<ConfirmDialog>("Delete", p))!;
+        var r = (await d.Result!)!;
         if (r.Canceled || r.Data is not true)
         {
             return;

@@ -1,0 +1,178 @@
+@page "/brokers"
+@rendermode InteractiveServer
+@using Microsoft.Extensions.Options
+@using MQTTower.Infrastructure.Agents
+@attribute [Authorize(Roles = nameof(AppUserRole.Admin))]
+@inject IBrokerRegistry Registry
+@inject IBrokerGatewayFactory GatewayFactory
+@inject IOptionsSnapshot<MqttTowerOptions> TowerOptions
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Brokers</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Brokers</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudText Typo="Typo.subtitle1" Class="mb-2">Registration</MudText>
+    <MudText Typo="Typo.body2" Class="mqtt-muted mb-2">
+        Configure agents with the same <code>RegistrationToken</code> as <code>MQTTower:RegistrationSecret</code> on this server.
+        Agents call <code>POST /api/agents/register</code> on startup.
+    </MudText>
+    <MudText Typo="Typo.body2">Secret configured: @(string.IsNullOrEmpty(_secret) ? "no (set MQTTower__RegistrationSecret)" : "yes")</MudText>
+</MudPaper>
+
+<MudStack Row="true" Spacing="2" Class="mb-4">
+    <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenAddAsync">Add broker manually</MudButton>
+</MudStack>
+
+<MudTable Items="@_items" Hover="true" Dense="true" Loading="_loading">
+    <HeaderContent>
+        <MudTh>Name</MudTh>
+        <MudTh>URL</MudTh>
+        <MudTh>Status</MudTh>
+        <MudTh>Local</MudTh>
+        <MudTh>Approved</MudTh>
+        <MudTh Style="text-align:right">Actions</MudTh>
+    </HeaderContent>
+    <RowTemplate Context="row">
+        <MudTd>@row.Name</MudTd>
+        <MudTd Style="max-width:240px;overflow:hidden;text-overflow:ellipsis">@row.AgentUrl</MudTd>
+        <MudTd>@row.Status</MudTd>
+        <MudTd>@(row.UseLocalServices ? "yes" : "no")</MudTd>
+        <MudTd>@(row.Approved ? "yes" : "no")</MudTd>
+        <MudTd Style="text-align:right">
+            @if (!row.Approved && !row.UseLocalServices)
+            {
+                <MudButton Size="Size.Small" Color="Color.Primary" OnClick="@(() => ApproveAsync(row.Id))">Approve</MudButton>
+            }
+            @if (!row.UseLocalServices)
+            {
+                <MudButton Size="Size.Small" Color="Color.Primary" Class="ml-1" OnClick="@(() => OpenEditAsync(row))">Edit</MudButton>
+                <MudButton Size="Size.Small" Color="Color.Warning" Class="ml-1" OnClick="@(() => RotateKeyAsync(row))">Rotate key</MudButton>
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => DeleteAsync(row.Id))" aria-label="delete" />
+            }
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+@code {
+    private List<BrokerProfile> _items = new();
+    private bool _loading;
+    private string _secret = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _secret = TowerOptions.Value.RegistrationSecret ?? string.Empty;
+        await LoadAsync().ConfigureAwait(false);
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _items = (await Registry.ListAsync().ConfigureAwait(false)).OrderBy(x => x.Name).ToList();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ApproveAsync(Guid id)
+    {
+        var b = await Registry.GetAsync(id).ConfigureAwait(false);
+        if (b is null)
+        {
+            return;
+        }
+
+        b.Approved = true;
+        b.Status = BrokerStatus.Unknown;
+        await Registry.UpdateAsync(b).ConfigureAwait(false);
+        Snackbar.Add("Broker approved", Severity.Success);
+        await LoadAsync().ConfigureAwait(false);
+    }
+
+    private async Task DeleteAsync(Guid id)
+    {
+        await Registry.DeleteAsync(id).ConfigureAwait(false);
+        Snackbar.Add("Broker removed", Severity.Info);
+        await LoadAsync().ConfigureAwait(false);
+    }
+
+    private async Task RotateKeyAsync(BrokerProfile row)
+    {
+        var newKey = Convert.ToBase64String(Guid.NewGuid().ToByteArray())[..32];
+        if (!string.IsNullOrWhiteSpace(row.AgentUrl))
+        {
+            var gw = GatewayFactory.Create(row);
+            try
+            {
+                if (gw is AgentHttpClient http)
+                {
+                    var res = await http.PushApiKeyAsync(newKey).ConfigureAwait(false);
+                    if (!res.IsSuccessStatusCode)
+                    {
+                        Snackbar.Add($"Agent did not accept new key ({(int)res.StatusCode}). Database was not updated.", Severity.Error);
+                        return;
+                    }
+                }
+            }
+            finally
+            {
+                (gw as IDisposable)?.Dispose();
+            }
+        }
+
+        row.ApiKey = newKey;
+        await Registry.UpdateAsync(row).ConfigureAwait(false);
+        Snackbar.Add($"New API key (update agent config if needed): {newKey}", Severity.Warning);
+        await LoadAsync().ConfigureAwait(false);
+    }
+
+    private async Task OpenEditAsync(BrokerProfile row)
+    {
+        var p = new DialogParameters { [nameof(EditBrokerDialog.Initial)] = row };
+        var d = (await DialogService.ShowAsync<EditBrokerDialog>("Edit broker", p).ConfigureAwait(false))!;
+        var r = (await d.Result!.ConfigureAwait(false))!;
+        if (r.Canceled || r.Data is not ValueTuple<string, string, string> data)
+        {
+            return;
+        }
+
+        var (name, url, notes) = data;
+        row.Name = name;
+        row.AgentUrl = url;
+        row.Notes = string.IsNullOrWhiteSpace(notes) ? null : notes;
+        await Registry.UpdateAsync(row).ConfigureAwait(false);
+        Snackbar.Add("Broker updated", Severity.Success);
+        await LoadAsync().ConfigureAwait(false);
+    }
+
+    private async Task OpenAddAsync()
+    {
+        var d = (await DialogService.ShowAsync<AddBrokerDialog>("Add broker").ConfigureAwait(false))!;
+        var r = (await d.Result!.ConfigureAwait(false))!;
+        if (r.Canceled || r.Data is not ValueTuple<string, string, string> data)
+        {
+            return;
+        }
+
+        var (name, url, key) = data;
+        var p = new BrokerProfile
+        {
+            Name = name,
+            AgentUrl = url,
+            ApiKey = key,
+            Status = BrokerStatus.Unknown,
+            RegisteredAt = DateTimeOffset.UtcNow,
+            Approved = true,
+            UseLocalServices = false,
+        };
+        await Registry.AddAsync(p).ConfigureAwait(false);
+        Snackbar.Add("Broker added", Severity.Success);
+        await LoadAsync().ConfigureAwait(false);
+    }
+}

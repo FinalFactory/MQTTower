@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
 using MQTTower.Infrastructure.Tasmota;
 
 namespace MQTTower.Infrastructure.Tests;
@@ -8,7 +9,7 @@ public sealed class TasmotaParserTests
     [Fact]
     public void Parses_sensor_sample()
     {
-        var p = new TasmotaParser();
+        var p = new TasmotaParser(NullLogger<TasmotaParser>.Instance);
         const string json = """{"ENERGY":{"Power":120.5,"Voltage":230.1},"AM2301":{"Temperature":21.2,"Humidity":48}}""";
         var ok = p.TryParse("tele/tasmota/SENSOR", json, out var t);
         ok.Should().BeTrue();

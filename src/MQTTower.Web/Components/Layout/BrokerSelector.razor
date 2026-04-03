@@ -1,0 +1,45 @@
+@inject IBrokerRegistry Registry
+@inject BrokerContext BrokerCtx
+
+<MudSelect T="Guid?"
+           Value="_selectedId"
+           ValueChanged="OnChangedAsync"
+           Label="Scope"
+           Variant="Variant.Outlined"
+           Margin="Margin.Dense"
+           Class="mqtt-broker-select">
+    <MudSelectItem T="Guid?" Value="@((Guid?)null)">All brokers</MudSelectItem>
+    @foreach (var b in _brokers)
+    {
+        <MudSelectItem T="Guid?" Value="@b.Id">@b.Name (@b.Status)</MudSelectItem>
+    }
+</MudSelect>
+
+@code {
+    private List<BrokerProfile> _brokers = new();
+    private Guid? _selectedId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync().ConfigureAwait(false);
+    }
+
+    private async Task ReloadAsync()
+    {
+        _brokers = (await Registry.ListAsync().ConfigureAwait(false)).Where(x => x.Approved).OrderBy(x => x.Name).ToList();
+        _selectedId = BrokerCtx.Selected?.Id;
+    }
+
+    private async Task OnChangedAsync(Guid? id)
+    {
+        _selectedId = id;
+        if (id is null)
+        {
+            BrokerCtx.Select(null);
+            return;
+        }
+
+        var b = await Registry.GetAsync(id.Value).ConfigureAwait(false);
+        BrokerCtx.Select(b);
+    }
+}

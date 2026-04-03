@@ -27,6 +27,7 @@ public sealed class WebhookNotifier : INotificationChannel
 
         var client = _httpFactory.CreateClient(nameof(WebhookNotifier));
         var payload = new { title, body };
-        await client.PostAsJsonAsync(_options.WebhookUrl, payload, cancellationToken).ConfigureAwait(false);
+        using var res = await client.PostAsJsonAsync(_options.WebhookUrl, payload, cancellationToken).ConfigureAwait(false);
+        res.EnsureSuccessStatusCode();
     }
 }

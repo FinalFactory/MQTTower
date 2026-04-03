@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using MQTTower.Core.Interfaces;
 using MQTTower.Core.Tasmota;
 
@@ -6,6 +7,13 @@ namespace MQTTower.Infrastructure.Tasmota;
 
 public sealed class TasmotaParser : ITasmotaParser
 {
+    private readonly ILogger<TasmotaParser> _logger;
+
+    public TasmotaParser(ILogger<TasmotaParser> logger)
+    {
+        _logger = logger;
+    }
+
     public bool TryParse(string topic, string payloadJson, out TasmotaTelemetry telemetry)
     {
         telemetry = new TasmotaTelemetry();
@@ -56,8 +64,9 @@ public sealed class TasmotaParser : ITasmotaParser
 
             return telemetry.PowerWatts is not null || telemetry.Temperature is not null;
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogDebug(ex, "Tasmota SENSOR/STATE JSON parse failed for topic {Topic}", topic);
             return false;
         }
     }

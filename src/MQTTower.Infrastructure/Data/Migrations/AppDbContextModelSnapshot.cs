@@ -56,17 +56,21 @@ namespace MQTTower.Infrastructure.Data.Migrations
 
                     b.Property<string>("Action")
                         .IsRequired()
+                        .HasMaxLength(128)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Details")
+                        .HasMaxLength(8192)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("EntityName")
                         .IsRequired()
+                        .HasMaxLength(512)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("EntityType")
                         .IsRequired()
+                        .HasMaxLength(128)
                         .HasColumnType("TEXT");
 
                     b.Property<DateTimeOffset>("Timestamp")
@@ -74,6 +78,7 @@ namespace MQTTower.Infrastructure.Data.Migrations
 
                     b.Property<string>("UserName")
                         .IsRequired()
+                        .HasMaxLength(256)
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
@@ -83,10 +88,65 @@ namespace MQTTower.Infrastructure.Data.Migrations
                     b.ToTable("AuditEntries");
                 });
 
+            modelBuilder.Entity("MQTTower.Infrastructure.Data.Entities.BrokerProfileEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AgentUrl")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ApiKey")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Approved")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset?>("LastSeen")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("RegisteredAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TlsCertThumbprint")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("UseLocalServices")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AgentUrl")
+                        .IsUnique()
+                        .HasFilter("AgentUrl <> ''");
+
+                    b.HasIndex("UseLocalServices");
+
+                    b.ToTable("BrokerProfiles");
+                });
+
             modelBuilder.Entity("MQTTower.Infrastructure.Data.Entities.DeviceEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("BrokerId")
                         .HasColumnType("TEXT");
 
                     b.Property<int>("ExpectedHeartbeatSeconds")
@@ -123,10 +183,10 @@ namespace MQTTower.Infrastructure.Data.Migrations
             modelBuilder.Entity("MQTTower.Infrastructure.Data.Entities.DeviceStateEntity", b =>
                 {
                     b.Property<Guid>("DeviceId")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
                     b.Property<string>("LastPayloadPreview")
+                        .HasMaxLength(2048)
                         .HasColumnType("TEXT");
 
                     b.Property<DateTimeOffset>("LastSeen")
@@ -146,11 +206,15 @@ namespace MQTTower.Infrastructure.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<Guid?>("BrokerId")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTimeOffset>("CapturedAt")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
                         .IsRequired()
+                        .HasMaxLength(256)
                         .HasColumnType("TEXT");
 
                     b.Property<double>("Value")
@@ -171,10 +235,12 @@ namespace MQTTower.Infrastructure.Data.Migrations
 
                     b.Property<string>("Channel")
                         .IsRequired()
+                        .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("ConfigJson")
                         .IsRequired()
+                        .HasMaxLength(8192)
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("Enabled")
@@ -182,15 +248,45 @@ namespace MQTTower.Infrastructure.Data.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
+                        .HasMaxLength(256)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("TriggerType")
                         .IsRequired()
+                        .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
                     b.ToTable("NotificationRules");
+                });
+
+            modelBuilder.Entity("MQTTower.Infrastructure.Data.Entities.RegistrationTokenEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("ExpiresAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("UsedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.ToTable("RegistrationTokens");
                 });
 
             modelBuilder.Entity("MQTTower.Infrastructure.Data.Entities.ScheduledTaskEntity", b =>
@@ -199,8 +295,12 @@ namespace MQTTower.Infrastructure.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("BrokerId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("CronExpression")
                         .IsRequired()
+                        .HasMaxLength(256)
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("Enabled")
@@ -208,10 +308,12 @@ namespace MQTTower.Infrastructure.Data.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
+                        .HasMaxLength(256)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Payload")
                         .IsRequired()
+                        .HasMaxLength(65536)
                         .HasColumnType("TEXT");
 
                     b.Property<int>("Qos")
@@ -222,6 +324,7 @@ namespace MQTTower.Infrastructure.Data.Migrations
 
                     b.Property<string>("Topic")
                         .IsRequired()
+                        .HasMaxLength(1024)
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
@@ -237,14 +340,20 @@ namespace MQTTower.Infrastructure.Data.Migrations
 
                     b.Property<string>("ActionConfigJson")
                         .IsRequired()
+                        .HasMaxLength(8192)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("ActionType")
                         .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("BrokerId")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Condition")
                         .IsRequired()
+                        .HasMaxLength(2048)
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("Enabled")
@@ -252,15 +361,26 @@ namespace MQTTower.Infrastructure.Data.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
+                        .HasMaxLength(256)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("TopicPattern")
                         .IsRequired()
+                        .HasMaxLength(512)
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
                     b.ToTable("TopicWatchers");
+                });
+
+            modelBuilder.Entity("MQTTower.Infrastructure.Data.Entities.DeviceStateEntity", b =>
+                {
+                    b.HasOne("MQTTower.Infrastructure.Data.Entities.DeviceEntity", null)
+                        .WithMany()
+                        .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 #pragma warning restore 612, 618
         }

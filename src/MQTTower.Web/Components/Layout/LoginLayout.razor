@@ -1,0 +1,15 @@
+@inherits LayoutComponentBase
+@using MQTTower.Web.Theme
+
+<MudThemeProvider Theme="MQTTowerTheme.Instance" @bind-IsDarkMode="_dark" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<div class="mqtt-login-shell">
+    @Body
+</div>
+
+@code {
+    private bool _dark = true;
+}

@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using MQTTower.Core.Models;
 using MQTTower.Infrastructure.Data;
 using MQTTower.Infrastructure.Data.Entities;
@@ -32,7 +33,7 @@ public sealed class NotificationRouterTests
         var ch = Substitute.For<MQTTower.Core.Interfaces.INotificationChannel>();
         ch.ChannelId.Returns("ntfy");
 
-        var router = new NotificationRouter(db, new[] { ch });
+        var router = new NotificationRouter(db, new[] { ch }, NullLogger<NotificationRouter>.Instance);
 
         await router.DispatchAsync("watcher", "{}", CancellationToken.None);
 

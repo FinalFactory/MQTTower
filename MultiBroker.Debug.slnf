@@ -1,0 +1,11 @@
+{
+  "solution": {
+    "path": "MQTTower.sln",
+    "projects": [
+      "src\\MQTTower.Core\\MQTTower.Core.csproj",
+      "src\\MQTTower.Infrastructure\\MQTTower.Infrastructure.csproj",
+      "src\\MQTTower.Web\\MQTTower.Web.csproj",
+      "src\\MQTTower.Agent\\MQTTower.Agent.csproj"
+    ]
+  }
+}

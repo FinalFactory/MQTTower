@@ -1,6 +1,8 @@
 @page "/clients"
 @rendermode InteractiveServer
-@inject IDynSecService DynSec
+@implements IDisposable
+@inject IBrokerGatewayFactory GatewayFactory
+@inject BrokerContext BrokerCtx
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 
@@ -10,43 +12,50 @@
     <MudText Typo="Typo.h4">Clients</MudText>
     <AuthorizeView Roles="Admin">
         <Authorized>
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateAsync">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateAsync" Disabled="@(BrokerCtx.Selected is null)">
                 Add client
             </MudButton>
         </Authorized>
     </AuthorizeView>
 </MudStack>
 
-<MudTable Items="@FilteredItems" Hover="true" Dense="true" Loading="_loading">
-    <ToolBarContent>
-        <MudTextField @bind-Value="_search" Placeholder="Search" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" />
-    </ToolBarContent>
-    <HeaderContent>
-        <MudTh>Username</MudTh>
-        <MudTh>Enabled</MudTh>
-        <MudTh Style="text-align:right">Actions</MudTh>
-    </HeaderContent>
-    <RowTemplate Context="row">
-        <MudTd DataLabel="Username">@row.Username</MudTd>
-        <MudTd DataLabel="Enabled">
-            <AuthorizeView Roles="Admin">
-                <Authorized>
-                    <MudSwitch T="bool" Color="Color.Primary" Value="@row.Enabled" ValueChanged="@(async v => await SetEnabledAsync(row.Username, v))" />
-                </Authorized>
-                <NotAuthorized>
-                    <MudChip T="string" Color="Color.Primary" Variant="Variant.Outlined">@(row.Enabled ? "on" : "off")</MudChip>
-                </NotAuthorized>
-            </AuthorizeView>
-        </MudTd>
-        <MudTd DataLabel="Actions" Style="text-align:right">
-            <AuthorizeView Roles="Admin">
-                <Authorized>
-                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" aria-label="delete" OnClick="@(() => DeleteAsync(row.Username))" />
-                </Authorized>
-            </AuthorizeView>
-        </MudTd>
-    </RowTemplate>
-</MudTable>
+@if (BrokerCtx.Selected is null)
+{
+    <MudAlert Severity="Severity.Info">Select a broker in the header.</MudAlert>
+}
+else
+{
+    <MudTable Items="@FilteredItems" Hover="true" Dense="true" Loading="_loading">
+        <ToolBarContent>
+            <MudTextField @bind-Value="_search" Placeholder="Search" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" />
+        </ToolBarContent>
+        <HeaderContent>
+            <MudTh>Username</MudTh>
+            <MudTh>Enabled</MudTh>
+            <MudTh Style="text-align:right">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate Context="row">
+            <MudTd DataLabel="Username">@row.Username</MudTd>
+            <MudTd DataLabel="Enabled">
+                <AuthorizeView Roles="Admin">
+                    <Authorized>
+                        <MudSwitch T="bool" Color="Color.Primary" Value="@row.Enabled" ValueChanged="@(async v => await SetEnabledAsync(row.Username, v))" />
+                    </Authorized>
+                    <NotAuthorized>
+                        <MudChip T="string" Color="Color.Primary" Variant="Variant.Outlined">@(row.Enabled ? "on" : "off")</MudChip>
+                    </NotAuthorized>
+                </AuthorizeView>
+            </MudTd>
+            <MudTd DataLabel="Actions" Style="text-align:right">
+                <AuthorizeView Roles="Admin">
+                    <Authorized>
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" aria-label="delete" OnClick="@(() => DeleteAsync(row.Username))" />
+                    </Authorized>
+                </AuthorizeView>
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
 
 @code {
     private List<MqttClientInfo> _items = new();
@@ -58,14 +67,37 @@
             ? _items
             : _items.Where(x => x.Username.Contains(_search, StringComparison.OrdinalIgnoreCase));
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        BrokerCtx.Changed += OnBrokerChanged;
+        await LoadAsync().ConfigureAwait(false);
+    }
+
+    private void OnBrokerChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await LoadAsync().ConfigureAwait(false);
+            StateHasChanged();
+        });
+    }
 
     private async Task LoadAsync()
     {
+        if (BrokerCtx.Selected is null)
+        {
+            _items = new List<MqttClientInfo>();
+            return;
+        }
+
         _loading = true;
         try
         {
-            _items = (await DynSec.ListClientsAsync().ConfigureAwait(false)).ToList();
+            _items = (await BrokerGatewayHelper.WithGatewayAsync(
+                GatewayFactory,
+                BrokerCtx.Selected,
+                gw => gw.ListClientsAsync(),
+                Array.Empty<MqttClientInfo>()).ConfigureAwait(false)).ToList();
         }
         catch (Exception ex)
         {
@@ -79,11 +111,11 @@
 
     private async Task OpenCreateAsync()
     {
-        var d = await DialogService.ShowAsync<ClientEditDialog>("New client");
-        var r = await d.Result;
+        var d = (await DialogService.ShowAsync<ClientEditDialog>("New client").ConfigureAwait(false))!;
+        var r = (await d.Result!.ConfigureAwait(false))!;
         if (!r.Canceled)
         {
-            await LoadAsync();
+            await LoadAsync().ConfigureAwait(false);
         }
     }
 
@@ -91,8 +123,11 @@
     {
         try
         {
-            await DynSec.SetClientEnabledAsync(username, enabled).ConfigureAwait(false);
-            await LoadAsync();
+            await BrokerGatewayHelper.WithGatewayAsync(
+                GatewayFactory,
+                BrokerCtx.Selected,
+                gw => gw.SetClientEnabledAsync(username, enabled)).ConfigureAwait(false);
+            await LoadAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -103,8 +138,8 @@
     private async Task DeleteAsync(string username)
     {
         var p = new DialogParameters { [nameof(ConfirmDialog.Message)] = $"Delete client {username}?" };
-        var d = await DialogService.ShowAsync<ConfirmDialog>("Delete client", p);
-        var r = await d.Result;
+        var d = (await DialogService.ShowAsync<ConfirmDialog>("Delete client", p).ConfigureAwait(false))!;
+        var r = (await d.Result!.ConfigureAwait(false))!;
         if (r.Canceled || r.Data is not true)
         {
             return;
@@ -112,12 +147,20 @@
 
         try
         {
-            await DynSec.DeleteClientAsync(username).ConfigureAwait(false);
-            await LoadAsync();
+            await BrokerGatewayHelper.WithGatewayAsync(
+                GatewayFactory,
+                BrokerCtx.Selected,
+                gw => gw.DeleteClientAsync(username)).ConfigureAwait(false);
+            await LoadAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             Snackbar.Add(ex.Message, Severity.Error);
         }
+    }
+
+    public void Dispose()
+    {
+        BrokerCtx.Changed -= OnBrokerChanged;
     }
 }

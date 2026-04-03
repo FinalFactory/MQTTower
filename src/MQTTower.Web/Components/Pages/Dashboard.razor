@@ -1,103 +1,177 @@
 @page "/"
 @rendermode InteractiveServer
+@implements IDisposable
+@using MQTTower.Infrastructure.Agents
 @using MQTTower.Core.Models
-@inject IBrokerStatsProvider Stats
+@using MQTTower.Web.Helpers
+@inject IBrokerGatewayFactory GatewayFactory
+@inject BrokerContext BrokerCtx
+@inject IBrokerRegistry Registry
 @inject IMetricStore Metrics
 @inject IAuditLog Audit
-@inject IDynSecService DynSec
 
 <PageTitle>Overview</PageTitle>
 
 <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
     <MudText Typo="Typo.h4">Overview</MudText>
-    <MudStack Row="true" Spacing="1">
-        <MudChip T="string" Color="Color.Primary" Variant="Variant.Outlined">#0FF197</MudChip>
-        <MudChip T="string" Color="Color.Info" Variant="Variant.Outlined">#00D4FF</MudChip>
-    </MudStack>
 </MudStack>
 
-<MudGrid Spacing="3">
-    <MudItem xs="12" sm="6" md="3">
-        <MudPaper Class="mqtt-stat-card mqtt-stat-green pa-4" Elevation="6">
-            <MudText Typo="Typo.subtitle2" Class="mqtt-muted">Connected Clients</MudText>
-            <MudText Typo="Typo.h3" Class="mqtt-stat-value">@_stats.ConnectedClients</MudText>
-            <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Class="mt-2">
-                <MudIcon Icon="@Icons.Material.Filled.TrendingUp" Color="Color.Primary" Size="Size.Small" />
-                <MudText Typo="Typo.caption" Class="mqtt-muted">+@_stats.ConnectedClientsDeltaThisHour this hour</MudText>
-            </MudStack>
-        </MudPaper>
-    </MudItem>
-    <MudItem xs="12" sm="6" md="3">
-        <MudPaper Class="mqtt-stat-card mqtt-stat-green pa-4" Elevation="6">
-            <MudText Typo="Typo.subtitle2" Class="mqtt-muted">Messages/sec</MudText>
-            <MudText Typo="Typo.h3" Class="mqtt-stat-value">@_stats.MessagesPerSecond.ToString("0")</MudText>
-            <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Class="mt-2">
-                <MudIcon Icon="@Icons.Material.Filled.TrendingUp" Color="Color.Primary" Size="Size.Small" />
-                <MudText Typo="Typo.caption" Class="mqtt-muted">+@_stats.MessagesPerSecondDeltaPercent.ToString("0")%</MudText>
-            </MudStack>
-        </MudPaper>
-    </MudItem>
-    <MudItem xs="12" sm="6" md="3">
-        <MudPaper Class="mqtt-stat-card mqtt-stat-cyan pa-4" Elevation="6">
-            <MudText Typo="Typo.subtitle2" Class="mqtt-muted">Active Topics</MudText>
-            <MudText Typo="Typo.h3" Class="mqtt-stat-value">@_stats.ActiveTopics</MudText>
-        </MudPaper>
-    </MudItem>
-    <MudItem xs="12" sm="6" md="3">
-        <MudPaper Class="mqtt-stat-card mqtt-stat-cyan pa-4" Elevation="6">
-            <MudText Typo="Typo.subtitle2" Class="mqtt-muted">Data Rate</MudText>
-            <MudText Typo="Typo.h3" Class="mqtt-stat-value">@FormatDataRate(_stats.DataRateBytesPerSecond)</MudText>
-        </MudPaper>
-    </MudItem>
+@if (BrokerCtx.Selected is null)
+{
+    <MudGrid Spacing="3" Class="mb-4">
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="mqtt-stat-card mqtt-stat-green pa-4" Elevation="6">
+                <MudText Typo="Typo.subtitle2" Class="mqtt-muted">Total connected clients</MudText>
+                <MudText Typo="Typo.h3" Class="mqtt-stat-value">@_aggTotalClients</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="mqtt-stat-card mqtt-stat-green pa-4" Elevation="6">
+                <MudText Typo="Typo.subtitle2" Class="mqtt-muted">Total messages / sec</MudText>
+                <MudText Typo="Typo.h3" Class="mqtt-stat-value">@_aggTotalMps.ToString("0")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="mqtt-stat-card mqtt-stat-cyan pa-4" Elevation="6">
+                <MudText Typo="Typo.subtitle2" Class="mqtt-muted">Brokers online</MudText>
+                <MudText Typo="Typo.h3" Class="mqtt-stat-value">@_aggOnlineBrokers / @_allBrokers.Count</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
 
-    <MudItem xs="12" md="8">
-        <MudPaper Class="pa-4 mqtt-chart-card" Elevation="4">
-            <MudText Typo="Typo.h6" Class="mb-2">Broker Activity — Last 24 Hours</MudText>
-            <MudChart T="double" ChartType="ChartType.Line" ChartSeries="@_lineSeries" xAxisLabels="@_lineLabels" Width="100%" Height="300px" ChartOptions="@_lineOptions" />
-        </MudPaper>
-    </MudItem>
-    <MudItem xs="12" md="4">
-        <MudPaper Class="pa-4 mqtt-chart-card" Elevation="4">
-            <MudText Typo="Typo.h6" Class="mb-2">Client Distribution</MudText>
-            <MudChart T="double" ChartType="ChartType.Donut" inputData="@_donutData" inputLabels="@_donutLabels" Width="100%" Height="280px" ChartOptions="@_donutOptions" />
-        </MudPaper>
-    </MudItem>
+    <MudText Typo="Typo.subtitle1" Class="mb-3">Brokers</MudText>
+    <MudGrid Spacing="3" Class="mb-4">
+        @foreach (var row in _brokerSummaries)
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <MudPaper Class="pa-4 mqtt-broker-summary-card" Elevation="4">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-2">
+                        <MudText Typo="Typo.subtitle1">@row.Profile.Name</MudText>
+                        <MudChip T="string" Size="Size.Small" Color="@StatusChipColor(row.Profile.Status)" Variant="Variant.Filled">
+                            @row.Profile.Status
+                        </MudChip>
+                    </MudStack>
+                    <MudText Typo="Typo.caption" Class="mqtt-muted mb-3">@row.Profile.AgentUrl</MudText>
+                    <MudStack Row="true" Spacing="4">
+                        <div>
+                            <MudText Typo="Typo.caption" Class="mqtt-muted">Clients</MudText>
+                            <MudText Typo="Typo.h6">@row.Stats.ConnectedClients</MudText>
+                        </div>
+                        <div>
+                            <MudText Typo="Typo.caption" Class="mqtt-muted">Msgs / sec</MudText>
+                            <MudText Typo="Typo.h6">@row.Stats.MessagesPerSecond.ToString("0")</MudText>
+                        </div>
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+        }
+    </MudGrid>
 
-    <MudItem xs="12" md="6">
-        <MudPaper Class="pa-4 mqtt-chart-card" Elevation="2">
-            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
-                <MudText Typo="Typo.subtitle1">Connected clients</MudText>
-                <MudIcon Icon="@Icons.Material.Filled.ChevronRight" />
-            </MudStack>
-            <MudList T="string" Dense="true" Class="mt-2">
-                @foreach (var c in _clients)
-                {
-                    <MudListItem T="string">
-                        <MudText Typo="Typo.body2">@c.Username @(c.Enabled ? "" : "(disabled)")</MudText>
-                    </MudListItem>
-                }
-            </MudList>
-        </MudPaper>
-    </MudItem>
-    <MudItem xs="12" md="6">
-        <MudPaper Class="pa-4 mqtt-chart-card" Elevation="2">
-            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
-                <MudText Typo="Typo.subtitle1">Recent Activity</MudText>
-                <MudIcon Icon="@Icons.Material.Filled.ChevronRight" />
-            </MudStack>
-            <MudList T="string" Dense="true">
-                @foreach (var a in _recent)
-                {
-                    <MudListItem T="string">
-                        <MudText Typo="Typo.body2">@a.Timestamp.LocalDateTime: @a.Action — @a.EntityName</MudText>
-                    </MudListItem>
-                }
-            </MudList>
-        </MudPaper>
-    </MudItem>
-</MudGrid>
+    <MudPaper Class="pa-4 mqtt-chart-card" Elevation="2">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+            <MudText Typo="Typo.subtitle1">Recent Activity</MudText>
+            <MudIcon Icon="@Icons.Material.Filled.ChevronRight" />
+        </MudStack>
+        <MudList T="string" Dense="true">
+            @foreach (var a in _recent)
+            {
+                <MudListItem T="string">
+                    <MudText Typo="Typo.body2">@a.Timestamp.LocalDateTime: @a.Action — @a.EntityName</MudText>
+                </MudListItem>
+            }
+        </MudList>
+    </MudPaper>
+}
+else
+{
+    <MudGrid Spacing="3">
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="mqtt-stat-card mqtt-stat-green pa-4" Elevation="6">
+                <MudText Typo="Typo.subtitle2" Class="mqtt-muted">Connected Clients</MudText>
+                <MudText Typo="Typo.h3" Class="mqtt-stat-value">@_stats.ConnectedClients</MudText>
+                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Class="mt-2">
+                    <MudIcon Icon="@Icons.Material.Filled.TrendingUp" Color="Color.Primary" Size="Size.Small" />
+                    <MudText Typo="Typo.caption" Class="mqtt-muted">+@_stats.ConnectedClientsDeltaThisHour this hour</MudText>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="mqtt-stat-card mqtt-stat-green pa-4" Elevation="6">
+                <MudText Typo="Typo.subtitle2" Class="mqtt-muted">Messages/sec</MudText>
+                <MudText Typo="Typo.h3" Class="mqtt-stat-value">@_stats.MessagesPerSecond.ToString("0")</MudText>
+                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Class="mt-2">
+                    <MudIcon Icon="@Icons.Material.Filled.TrendingUp" Color="Color.Primary" Size="Size.Small" />
+                    <MudText Typo="Typo.caption" Class="mqtt-muted">+@_stats.MessagesPerSecondDeltaPercent.ToString("0")%</MudText>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="mqtt-stat-card mqtt-stat-cyan pa-4" Elevation="6">
+                <MudText Typo="Typo.subtitle2" Class="mqtt-muted">Active Topics</MudText>
+                <MudText Typo="Typo.h3" Class="mqtt-stat-value">@_stats.ActiveTopics</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="mqtt-stat-card mqtt-stat-cyan pa-4" Elevation="6">
+                <MudText Typo="Typo.subtitle2" Class="mqtt-muted">Data Rate</MudText>
+                <MudText Typo="Typo.h3" Class="mqtt-stat-value">@FormatDataRate(_stats.DataRateBytesPerSecond)</MudText>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="8">
+            <MudPaper Class="pa-4 mqtt-chart-card" Elevation="4">
+                <MudText Typo="Typo.h6" Class="mb-2">Broker Activity — Last 24 Hours</MudText>
+                <MudChart T="double" ChartType="ChartType.Line" ChartSeries="@_lineSeries" xAxisLabels="@_lineLabels" Width="100%" Height="300px" ChartOptions="@_lineOptions" />
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4 mqtt-chart-card" Elevation="4">
+                <MudText Typo="Typo.h6" Class="mb-2">Client Distribution</MudText>
+                <MudChart T="double" ChartType="ChartType.Donut" inputData="@_donutData" inputLabels="@_donutLabels" Width="100%" Height="280px" ChartOptions="@_donutOptions" />
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4 mqtt-chart-card" Elevation="2">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                    <MudText Typo="Typo.subtitle1">Connected clients</MudText>
+                    <MudIcon Icon="@Icons.Material.Filled.ChevronRight" />
+                </MudStack>
+                <MudList T="string" Dense="true" Class="mt-2">
+                    @foreach (var c in _clients)
+                    {
+                        <MudListItem T="string">
+                            <MudText Typo="Typo.body2">@c.Username @(c.Enabled ? "" : "(disabled)")</MudText>
+                        </MudListItem>
+                    }
+                </MudList>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4 mqtt-chart-card" Elevation="2">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                    <MudText Typo="Typo.subtitle1">Recent Activity</MudText>
+                    <MudIcon Icon="@Icons.Material.Filled.ChevronRight" />
+                </MudStack>
+                <MudList T="string" Dense="true">
+                    @foreach (var a in _recent)
+                    {
+                        <MudListItem T="string">
+                            <MudText Typo="Typo.body2">@a.Timestamp.LocalDateTime: @a.Action — @a.EntityName</MudText>
+                        </MudListItem>
+                    }
+                </MudList>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
 
 @code {
+    private List<BrokerProfile> _allBrokers = new();
+    private IReadOnlyList<BrokerSummaryRow> _brokerSummaries = Array.Empty<BrokerSummaryRow>();
+    private int _aggTotalClients;
+    private double _aggTotalMps;
+    private int _aggOnlineBrokers;
     private BrokerStats _stats = new();
     private List<MqttClientInfo> _clients = new();
     private List<ChartSeries<double>> _lineSeries = new();
@@ -107,22 +181,171 @@
     private string[] _donutLabels = Array.Empty<string>();
     private ChartOptions _donutOptions = new();
     private List<AuditEntry> _recent = new();
+    private CancellationTokenSource? _liveCts;
+
+    private sealed record BrokerSummaryRow(BrokerProfile Profile, BrokerStats Stats);
 
     protected override async Task OnInitializedAsync()
     {
-        _stats = Stats.GetCurrent();
+        BrokerCtx.Changed += OnBrokerChanged;
+        await LoadAsync().ConfigureAwait(false);
+        StartLiveUpdatesIfRemote();
+    }
+
+    private void OnBrokerChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            StopLiveUpdates();
+            await LoadAsync().ConfigureAwait(false);
+            StartLiveUpdatesIfRemote();
+            StateHasChanged();
+        });
+    }
+
+    private void StopLiveUpdates()
+    {
         try
         {
-            _clients = (await DynSec.ListClientsAsync().ConfigureAwait(false)).Take(12).ToList();
+            _liveCts?.Cancel();
+        }
+        catch
+        {
+            /* ignore */
+        }
+
+        _liveCts?.Dispose();
+        _liveCts = null;
+    }
+
+    private void StartLiveUpdatesIfRemote()
+    {
+        if (BrokerCtx.Selected is null || BrokerCtx.Selected.UseLocalServices)
+        {
+            return;
+        }
+
+        var broker = BrokerCtx.Selected;
+        _liveCts = new CancellationTokenSource();
+        var token = _liveCts.Token;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var gw = GatewayFactory.Create(broker);
+                try
+                {
+                    if (gw is AgentHttpClient http)
+                    {
+                        await http.RunStatsStreamLoopAsync(
+                            async s =>
+                            {
+                                await InvokeAsync(() =>
+                                {
+                                    _stats = s;
+                                    StateHasChanged();
+                                    return Task.CompletedTask;
+                                }).ConfigureAwait(false);
+                            },
+                            token).ConfigureAwait(false);
+                    }
+                }
+                finally
+                {
+                    (gw as IDisposable)?.Dispose();
+                }
+            }
+            catch
+            {
+                /* fall back to polling */
+            }
+
+            if (token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            using var poll = new PeriodicTimer(TimeSpan.FromSeconds(5));
+            try
+            {
+                while (!token.IsCancellationRequested && await poll.WaitForNextTickAsync(token).ConfigureAwait(false))
+                {
+                    if (BrokerCtx.Selected?.Id != broker.Id)
+                    {
+                        break;
+                    }
+
+                    await InvokeAsync(async () =>
+                    {
+                        try
+                        {
+                            _stats = await BrokerGatewayHelper.WithGatewayAsync(
+                                GatewayFactory,
+                                BrokerCtx.Selected,
+                                gw => gw.GetStatsAsync(),
+                                new BrokerStats()).ConfigureAwait(false);
+                        }
+                        catch
+                        {
+                            _stats = new BrokerStats();
+                        }
+
+                        StateHasChanged();
+                    }).ConfigureAwait(false);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                /* normal */
+            }
+        }, token);
+    }
+
+    private async Task LoadAsync()
+    {
+        _allBrokers = (await Registry.ListAsync().ConfigureAwait(false)).Where(x => x.Approved).ToList();
+
+        var to = DateTimeOffset.UtcNow;
+        var from = to.AddHours(-24);
+
+        if (BrokerCtx.Selected is null)
+        {
+            _brokerSummaries = await LoadAllBrokerSummariesAsync().ConfigureAwait(false);
+            _aggTotalClients = _brokerSummaries.Sum(r => r.Stats.ConnectedClients);
+            _aggTotalMps = _brokerSummaries.Sum(r => r.Stats.MessagesPerSecond);
+            _aggOnlineBrokers = _allBrokers.Count(b => b.Status == BrokerStatus.Online);
+            _recent = (await Audit.QueryAsync(from, to, null, 0, 8).ConfigureAwait(false)).ToList();
+            return;
+        }
+
+        try
+        {
+            _stats = await BrokerGatewayHelper.WithGatewayAsync(
+                GatewayFactory,
+                BrokerCtx.Selected,
+                gw => gw.GetStatsAsync(),
+                new BrokerStats()).ConfigureAwait(false);
+        }
+        catch
+        {
+            _stats = new BrokerStats();
+        }
+
+        try
+        {
+            _clients = (await BrokerGatewayHelper.WithGatewayAsync(
+                GatewayFactory,
+                BrokerCtx.Selected,
+                gw => gw.ListClientsAsync(),
+                Array.Empty<MqttClientInfo>()).ConfigureAwait(false)).Take(12).ToList();
         }
         catch
         {
             _clients = new List<MqttClientInfo>();
         }
 
-        var to = DateTimeOffset.UtcNow;
-        var from = to.AddHours(-24);
-        var m = await Metrics.QueryAsync("messagesPerSecond", from, to);
+        var brokerId = BrokerCtx.Selected.Id;
+        var m = await Metrics.QueryAsync("messagesPerSecond", from, to, brokerId).ConfigureAwait(false);
         _lineLabels = m.Select(x => x.CapturedAt.LocalDateTime.ToString("HH:mm")).ToArray();
         _lineSeries = new List<ChartSeries<double>>
         {
@@ -130,12 +353,65 @@
         };
         _lineOptions = new ChartOptions();
 
-        _donutLabels = new[] { "Tasmota", "ESP Devices", "Home Assistant", "Other" };
-        _donutData = new[] { 42d, 31d, 18d, 9d };
-        _donutOptions = new ChartOptions { ChartPalette = new[] { "#00D4FF", "#0FF197", "#FFD54F", "#FF5252" } };
+        try
+        {
+            var allClients = await BrokerGatewayHelper.WithGatewayAsync(
+                GatewayFactory,
+                BrokerCtx.Selected,
+                gw => gw.ListClientsAsync(),
+                Array.Empty<MqttClientInfo>()).ConfigureAwait(false);
+            var enabled = allClients.Count(c => c.Enabled);
+            var disabled = allClients.Count - enabled;
+            _donutLabels = new[] { "Enabled", "Disabled" };
+            _donutData = new[] { (double)enabled, (double)disabled };
+        }
+        catch
+        {
+            _donutLabels = new[] { "n/a" };
+            _donutData = new[] { 1d };
+        }
 
-        _recent = (await Audit.QueryAsync(from, to, null, 0, 8)).ToList();
+        _donutOptions = new ChartOptions { ChartPalette = new[] { "#0FF197", "#FF5252" } };
+
+        _recent = (await Audit.QueryAsync(from, to, null, 0, 8).ConfigureAwait(false)).ToList();
     }
+
+    private async Task<IReadOnlyList<BrokerSummaryRow>> LoadAllBrokerSummariesAsync()
+    {
+        if (_allBrokers.Count == 0)
+        {
+            return Array.Empty<BrokerSummaryRow>();
+        }
+
+        var tasks = _allBrokers.Select(async b =>
+        {
+            try
+            {
+                var s = await BrokerGatewayHelper.WithGatewayAsync(
+                    GatewayFactory,
+                    b,
+                    gw => gw.GetStatsAsync(),
+                    new BrokerStats()).ConfigureAwait(false);
+                return new BrokerSummaryRow(b, s);
+            }
+            catch
+            {
+                return new BrokerSummaryRow(b, new BrokerStats());
+            }
+        });
+
+        var rows = await Task.WhenAll(tasks).ConfigureAwait(false);
+        return rows.OrderBy(r => r.Profile.Name, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private static Color StatusChipColor(BrokerStatus status) => status switch
+    {
+        BrokerStatus.Online => Color.Success,
+        BrokerStatus.Degraded => Color.Warning,
+        BrokerStatus.Offline => Color.Error,
+        BrokerStatus.Pending => Color.Info,
+        _ => Color.Default,
+    };
 
     private static string FormatDataRate(double bps)
     {
@@ -150,5 +426,11 @@
         }
 
         return $"{bps:0} B/s";
+    }
+
+    public void Dispose()
+    {
+        StopLiveUpdates();
+        BrokerCtx.Changed -= OnBrokerChanged;
     }
 }

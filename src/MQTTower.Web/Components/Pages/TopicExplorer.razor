@@ -1,34 +1,201 @@
 @page "/topic-explorer"
 @rendermode InteractiveServer
 @implements IDisposable
-@inject ITopicExplorerService Topics
+@using MQTTower.Infrastructure.Agents
+@inject IBrokerGatewayFactory GatewayFactory
+@inject BrokerContext BrokerCtx
+@inject ITopicExplorerService LocalTopics
 
 <PageTitle>Topic Explorer</PageTitle>
 
 <MudText Typo="Typo.h4" Class="mb-4">Topic explorer</MudText>
-<MudText Typo="Typo.caption" Class="mqtt-muted mb-4">Subscribes to <code>#</code> — tree updates as messages arrive.</MudText>
+@if (BrokerCtx.Selected?.UseLocalServices == true)
+{
+    <MudText Typo="Typo.caption" Class="mqtt-muted mb-4">Subscribes to <code>#</code> — tree updates as messages arrive (local broker).</MudText>
+}
+else if (BrokerCtx.Selected is not null)
+{
+    <MudText Typo="Typo.caption" Class="mqtt-muted mb-4">Live topic tree from agent (SSE with REST fallback).</MudText>
+}
 
-<TopicTreeBranch Nodes="@_roots" />
+@if (BrokerCtx.Selected is null)
+{
+    <MudAlert Severity="Severity.Info">Select a broker in the header.</MudAlert>
+}
+else
+{
+    <TopicTreeBranch Nodes="@_roots" />
+}
 
 @code {
     private IReadOnlyList<TopicTreeNode> _roots = Array.Empty<TopicTreeNode>();
+    private CancellationTokenSource? _liveCts;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        Topics.Changed += OnTopicsChanged;
-        Refresh();
+        BrokerCtx.Changed += OnBrokerChanged;
+        if (BrokerCtx.Selected?.UseLocalServices == true)
+        {
+            LocalTopics.Changed += OnLocalTopicsChanged;
+        }
+
+        await RefreshAsync().ConfigureAwait(false);
+        StartLiveUpdatesIfRemote();
     }
 
-    private void OnTopicsChanged(object? sender, EventArgs e) => InvokeAsync(() =>
+    private void OnLocalTopicsChanged(object? sender, EventArgs e)
     {
-        Refresh();
-        StateHasChanged();
-    });
+        _ = InvokeAsync(() =>
+        {
+            _roots = LocalTopics.GetRoots();
+            StateHasChanged();
+        });
+    }
 
-    private void Refresh() => _roots = Topics.GetRoots();
+    private void OnBrokerChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            StopLiveUpdates();
+            if (BrokerCtx.Selected?.UseLocalServices == true)
+            {
+                LocalTopics.Changed -= OnLocalTopicsChanged;
+                LocalTopics.Changed += OnLocalTopicsChanged;
+            }
+            else
+            {
+                LocalTopics.Changed -= OnLocalTopicsChanged;
+            }
+
+            await RefreshAsync().ConfigureAwait(false);
+            StartLiveUpdatesIfRemote();
+            StateHasChanged();
+        });
+    }
+
+    private void StopLiveUpdates()
+    {
+        try
+        {
+            _liveCts?.Cancel();
+        }
+        catch
+        {
+            /* ignore */
+        }
+
+        _liveCts?.Dispose();
+        _liveCts = null;
+    }
+
+    private void StartLiveUpdatesIfRemote()
+    {
+        if (BrokerCtx.Selected is null || BrokerCtx.Selected.UseLocalServices)
+        {
+            return;
+        }
+
+        var broker = BrokerCtx.Selected;
+        _liveCts = new CancellationTokenSource();
+        var token = _liveCts.Token;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var gw = GatewayFactory.Create(broker);
+                try
+                {
+                    if (gw is AgentHttpClient http)
+                    {
+                        await http.RunTopicsStreamLoopAsync(
+                            async roots =>
+                            {
+                                await InvokeAsync(() =>
+                                {
+                                    _roots = roots;
+                                    StateHasChanged();
+                                    return Task.CompletedTask;
+                                }).ConfigureAwait(false);
+                            },
+                            token).ConfigureAwait(false);
+                    }
+                }
+                finally
+                {
+                    (gw as IDisposable)?.Dispose();
+                }
+            }
+            catch
+            {
+                /* fall back to polling */
+            }
+
+            if (token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            using var poll = new PeriodicTimer(TimeSpan.FromSeconds(3));
+            try
+            {
+                while (!token.IsCancellationRequested && await poll.WaitForNextTickAsync(token).ConfigureAwait(false))
+                {
+                    if (BrokerCtx.Selected?.Id != broker.Id)
+                    {
+                        break;
+                    }
+
+                    await InvokeAsync(async () =>
+                    {
+                        try
+                        {
+                            _roots = await BrokerGatewayHelper.WithGatewayAsync(
+                                GatewayFactory,
+                                BrokerCtx.Selected,
+                                gw => gw.GetTopicRootsAsync(),
+                                Array.Empty<TopicTreeNode>()).ConfigureAwait(false);
+                        }
+                        catch
+                        {
+                            _roots = Array.Empty<TopicTreeNode>();
+                        }
+
+                        StateHasChanged();
+                    }).ConfigureAwait(false);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                /* normal */
+            }
+        }, token);
+    }
+
+    private async Task RefreshAsync()
+    {
+        if (BrokerCtx.Selected is null)
+        {
+            _roots = Array.Empty<TopicTreeNode>();
+            return;
+        }
+
+        if (BrokerCtx.Selected.UseLocalServices)
+        {
+            _roots = LocalTopics.GetRoots();
+            return;
+        }
+
+        _roots = await BrokerGatewayHelper.WithGatewayAsync(
+            GatewayFactory,
+            BrokerCtx.Selected,
+            gw => gw.GetTopicRootsAsync(),
+            Array.Empty<TopicTreeNode>()).ConfigureAwait(false);
+    }
 
     public void Dispose()
     {
-        Topics.Changed -= OnTopicsChanged;
+        BrokerCtx.Changed -= OnBrokerChanged;
+        LocalTopics.Changed -= OnLocalTopicsChanged;
+        StopLiveUpdates();
     }
 }

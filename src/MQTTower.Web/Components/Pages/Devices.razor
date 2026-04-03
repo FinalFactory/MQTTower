@@ -1,7 +1,10 @@
 @page "/devices"
 @rendermode InteractiveServer
+@implements IDisposable
 @using MQTTower.Core.Tasmota
+@inject BrokerContext BrokerCtx
 @inject IDeviceRegistry Registry
+@inject IBrokerRegistry BrokerRegistry
 @inject ITasmotaParser Tasmota
 @inject IDialogService DialogService
 
@@ -11,13 +14,17 @@
     <MudText Typo="Typo.h4">Devices</MudText>
     <AuthorizeView Roles="Admin">
         <Authorized>
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateAsync">Register device</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateAsync" Disabled="@(BrokerCtx.Selected is null)">Register device</MudButton>
         </Authorized>
     </AuthorizeView>
 </MudStack>
 
 <MudTable Items="@_items" Hover="true" Dense="true" Loading="_loading">
     <HeaderContent>
+        @if (BrokerCtx.Selected is null)
+        {
+            <MudTh>Broker</MudTh>
+        }
         <MudTh>Name</MudTh>
         <MudTh>Type</MudTh>
         <MudTh>Location</MudTh>
@@ -25,6 +32,10 @@
         <MudTh Style="text-align:right">Actions</MudTh>
     </HeaderContent>
     <RowTemplate Context="row">
+        @if (BrokerCtx.Selected is null)
+        {
+            <MudTd>@BrokerLabel(row.BrokerId)</MudTd>
+        }
         <MudTd>@row.Name</MudTd>
         <MudTd>@row.Type</MudTd>
         <MudTd>@row.Location</MudTd>
@@ -50,12 +61,25 @@
     private List<Device> _items = new();
     private bool _loading;
     private TasmotaTelemetry _sampleTasmota = new();
+    private Dictionary<Guid, string> _brokerNames = new();
 
     protected override async Task OnInitializedAsync()
     {
         const string sample = """{"ENERGY":{"Power":120.5,"Voltage":230.1,"Current":0.52,"Total":12.3},"AM2301":{"Temperature":21.2,"Humidity":48}}""";
         Tasmota.TryParse("tele/foo/SENSOR", sample, out _sampleTasmota);
-        await LoadAsync();
+        BrokerCtx.Changed += OnBrokerChanged;
+        await LoadAsync().ConfigureAwait(false);
+    }
+
+    public void Dispose() => BrokerCtx.Changed -= OnBrokerChanged;
+
+    private void OnBrokerChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await LoadAsync().ConfigureAwait(false);
+            StateHasChanged();
+        });
     }
 
     private async Task LoadAsync()
@@ -63,7 +87,13 @@
         _loading = true;
         try
         {
-            _items = (await Registry.ListAsync().ConfigureAwait(false)).ToList();
+            if (BrokerCtx.Selected is null)
+            {
+                var brokers = await BrokerRegistry.ListAsync().ConfigureAwait(false);
+                _brokerNames = brokers.ToDictionary(b => b.Id, b => b.Name);
+            }
+
+            _items = (await Registry.ListAsync(BrokerCtx.Selected?.Id).ConfigureAwait(false)).ToList();
         }
         finally
         {
@@ -71,9 +101,12 @@
         }
     }
 
+    private string BrokerLabel(Guid? brokerId) =>
+        brokerId is null ? "—" : (_brokerNames.TryGetValue(brokerId.Value, out var n) ? n : brokerId.Value.ToString());
+
     private async Task OpenCreateAsync()
     {
-        var d = new Device { Name = "New device", Type = "Generic", ExpectedHeartbeatSeconds = 300 };
+        var d = new Device { BrokerId = BrokerCtx.Selected?.Id, Name = "New device", Type = "Generic", ExpectedHeartbeatSeconds = 300 };
         await ShowAsync("Register device", d);
     }
 
@@ -82,8 +115,8 @@
     private async Task ShowAsync(string title, Device d)
     {
         var p = new DialogParameters { [nameof(DeviceEditDialog.Initial)] = d };
-        var dialog = await DialogService.ShowAsync<DeviceEditDialog>(title, p);
-        var r = await dialog.Result;
+        var dialog = (await DialogService.ShowAsync<DeviceEditDialog>(title, p))!;
+        var r = (await dialog.Result!)!;
         if (!r.Canceled)
         {
             await LoadAsync();
@@ -93,8 +126,8 @@
     private async Task DeleteAsync(Guid id)
     {
         var p = new DialogParameters { [nameof(ConfirmDialog.Message)] = "Delete this device?" };
-        var d = await DialogService.ShowAsync<ConfirmDialog>("Delete", p);
-        var r = await d.Result;
+        var d = (await DialogService.ShowAsync<ConfirmDialog>("Delete", p))!;
+        var r = (await d.Result!)!;
         if (r.Canceled || r.Data is not true)
         {
             return;

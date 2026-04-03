@@ -1,16 +1,82 @@
+@implements IDisposable
+@inject BrokerContext BrokerCtx
+
 <MudNavMenu Class="mqtt-nav">
+    <MudText Typo="Typo.caption" Class="mqtt-muted px-4 py-2">Overview</MudText>
     <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
-    <MudNavLink Href="/clients" Icon="@Icons.Material.Filled.People">Clients</MudNavLink>
-    <MudNavLink Href="/roles" Icon="@Icons.Material.Filled.Security">Roles</MudNavLink>
-    <MudNavLink Href="/groups" Icon="@Icons.Material.Filled.GroupWork">Groups</MudNavLink>
-    <MudNavLink Href="/devices" Icon="@Icons.Material.Filled.Devices">Devices</MudNavLink>
-    <MudNavLink Href="/topic-explorer" Icon="@Icons.Material.Filled.AccountTree">Topic Explorer</MudNavLink>
-    <MudNavLink Href="/schedulers" Icon="@Icons.Material.Filled.Schedule">Schedulers</MudNavLink>
-    <MudNavLink Href="/watchers" Icon="@Icons.Material.Filled.Visibility">Watchers</MudNavLink>
-    <MudNavLink Href="/broker-logs" Icon="@Icons.Material.Filled.ListAlt">Broker Logs</MudNavLink>
-    <MudNavLink Href="/broker-config" Icon="@Icons.Material.Filled.SettingsEthernet">Broker Config</MudNavLink>
+
+    <MudText Typo="Typo.caption" Class="mqtt-muted px-4 py-2">Broker</MudText>
+    <div class="mqtt-nav-section-broker">
+        <MudTooltip Text="Select a broker in the sidebar first" Disabled="@(BrokerCtx.Selected is not null)">
+            <span class="@NavBrokerWrapClass" style="display:block">
+                <MudNavLink Href="/clients" Icon="@Icons.Material.Filled.People" Disabled="@BrokerNavDisabled">Clients</MudNavLink>
+            </span>
+        </MudTooltip>
+        <MudTooltip Text="Select a broker in the sidebar first" Disabled="@(BrokerCtx.Selected is not null)">
+            <span class="@NavBrokerWrapClass" style="display:block">
+                <MudNavLink Href="/roles" Icon="@Icons.Material.Filled.Security" Disabled="@BrokerNavDisabled">Roles</MudNavLink>
+            </span>
+        </MudTooltip>
+        <MudTooltip Text="Select a broker in the sidebar first" Disabled="@(BrokerCtx.Selected is not null)">
+            <span class="@NavBrokerWrapClass" style="display:block">
+                <MudNavLink Href="/groups" Icon="@Icons.Material.Filled.GroupWork" Disabled="@BrokerNavDisabled">Groups</MudNavLink>
+            </span>
+        </MudTooltip>
+        <MudTooltip Text="Select a broker in the sidebar first" Disabled="@(BrokerCtx.Selected is not null)">
+            <span class="@NavBrokerWrapClass" style="display:block">
+                <MudNavLink Href="/devices" Icon="@Icons.Material.Filled.Devices" Disabled="@BrokerNavDisabled">Devices</MudNavLink>
+            </span>
+        </MudTooltip>
+        <MudTooltip Text="Select a broker in the sidebar first" Disabled="@(BrokerCtx.Selected is not null)">
+            <span class="@NavBrokerWrapClass" style="display:block">
+                <MudNavLink Href="/topic-explorer" Icon="@Icons.Material.Filled.AccountTree" Disabled="@BrokerNavDisabled">Topic Explorer</MudNavLink>
+            </span>
+        </MudTooltip>
+        <MudTooltip Text="Select a broker in the sidebar first" Disabled="@(BrokerCtx.Selected is not null)">
+            <span class="@NavBrokerWrapClass" style="display:block">
+                <MudNavLink Href="/schedulers" Icon="@Icons.Material.Filled.Schedule" Disabled="@BrokerNavDisabled">Schedulers</MudNavLink>
+            </span>
+        </MudTooltip>
+        <MudTooltip Text="Select a broker in the sidebar first" Disabled="@(BrokerCtx.Selected is not null)">
+            <span class="@NavBrokerWrapClass" style="display:block">
+                <MudNavLink Href="/watchers" Icon="@Icons.Material.Filled.Visibility" Disabled="@BrokerNavDisabled">Watchers</MudNavLink>
+            </span>
+        </MudTooltip>
+        <MudTooltip Text="Select a broker in the sidebar first" Disabled="@(BrokerCtx.Selected is not null)">
+            <span class="@NavBrokerWrapClass" style="display:block">
+                <MudNavLink Href="/broker-logs" Icon="@Icons.Material.Filled.ListAlt" Disabled="@BrokerNavDisabled">Broker Logs</MudNavLink>
+            </span>
+        </MudTooltip>
+        <MudTooltip Text="Select a broker in the sidebar first" Disabled="@(BrokerCtx.Selected is not null)">
+            <span class="@NavBrokerWrapClass" style="display:block">
+                <MudNavLink Href="/broker-config" Icon="@Icons.Material.Filled.SettingsEthernet" Disabled="@BrokerNavDisabled">Broker Config</MudNavLink>
+            </span>
+        </MudTooltip>
+    </div>
+
+    <MudText Typo="Typo.caption" Class="mqtt-muted px-4 py-2">Global</MudText>
+    <AuthorizeView Roles="Admin">
+        <Authorized>
+            <MudNavLink Href="/brokers" Icon="@Icons.Material.Filled.CloudQueue">Brokers</MudNavLink>
+        </Authorized>
+    </AuthorizeView>
     <MudNavLink Href="/notifications" Icon="@Icons.Material.Filled.NotificationsActive">Notifications</MudNavLink>
     <MudNavLink Href="/audit" Icon="@Icons.Material.Filled.History">Audit Log</MudNavLink>
     <MudNavLink Href="/backup" Icon="@Icons.Material.Filled.Archive">Backup</MudNavLink>
     <MudNavLink Href="/settings" Icon="@Icons.Material.Filled.Settings">Settings</MudNavLink>
 </MudNavMenu>
+
+@code {
+    private bool BrokerNavDisabled => BrokerCtx.Selected is null;
+
+    private string NavBrokerWrapClass => BrokerNavDisabled ? "mqtt-nav-link-disabled" : string.Empty;
+
+    protected override void OnInitialized()
+    {
+        BrokerCtx.Changed += OnBrokerContextChanged;
+    }
+
+    private void OnBrokerContextChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => BrokerCtx.Changed -= OnBrokerContextChanged;
+}

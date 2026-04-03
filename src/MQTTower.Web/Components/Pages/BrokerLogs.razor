@@ -1,28 +1,169 @@
 @page "/broker-logs"
 @rendermode InteractiveServer
-@inject IBrokerLogReader Logs
+@implements IDisposable
+@using MQTTower.Infrastructure.Agents
+@inject IBrokerGatewayFactory GatewayFactory
+@inject BrokerContext BrokerCtx
 
 <PageTitle>Broker Logs</PageTitle>
 
 <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
     <MudText Typo="Typo.h4">Broker logs</MudText>
-    <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync">Refresh</MudButton>
+    <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync" Disabled="@(BrokerCtx.Selected is null)">Refresh</MudButton>
 </MudStack>
 
-<MudPaper Class="pa-2 mqtt-chart-card" Elevation="2" Style="max-height:70vh;overflow:auto;font-family:ui-monospace,monospace;font-size:0.85rem;">
-    @foreach (var line in _lines)
-    {
-        <div>@line</div>
-    }
-</MudPaper>
+@if (BrokerCtx.Selected is null)
+{
+    <MudAlert Severity="Severity.Info">Select a broker in the header.</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-2 mqtt-chart-card" Elevation="2" Style="max-height:70vh;overflow:auto;font-family:ui-monospace,monospace;font-size:0.85rem;">
+        @foreach (var line in _lines)
+        {
+            <div>@line</div>
+        }
+    </MudPaper>
+}
 
 @code {
     private IReadOnlyList<string> _lines = Array.Empty<string>();
+    private CancellationTokenSource? _liveCts;
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        BrokerCtx.Changed += OnBrokerChanged;
+        await LoadAsync().ConfigureAwait(false);
+        StartLiveUpdatesIfRemote();
+    }
+
+    private void OnBrokerChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            StopLiveUpdates();
+            await LoadAsync().ConfigureAwait(false);
+            StartLiveUpdatesIfRemote();
+            StateHasChanged();
+        });
+    }
+
+    private void StopLiveUpdates()
+    {
+        try
+        {
+            _liveCts?.Cancel();
+        }
+        catch
+        {
+            /* ignore */
+        }
+
+        _liveCts?.Dispose();
+        _liveCts = null;
+    }
+
+    private void StartLiveUpdatesIfRemote()
+    {
+        if (BrokerCtx.Selected is null || BrokerCtx.Selected.UseLocalServices)
+        {
+            return;
+        }
+
+        var broker = BrokerCtx.Selected;
+        _liveCts = new CancellationTokenSource();
+        var token = _liveCts.Token;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var gw = GatewayFactory.Create(broker);
+                try
+                {
+                    if (gw is AgentHttpClient http)
+                    {
+                        await http.RunLogsStreamLoopAsync(
+                            async lines =>
+                            {
+                                await InvokeAsync(() =>
+                                {
+                                    _lines = lines;
+                                    StateHasChanged();
+                                    return Task.CompletedTask;
+                                }).ConfigureAwait(false);
+                            },
+                            token).ConfigureAwait(false);
+                    }
+                }
+                finally
+                {
+                    (gw as IDisposable)?.Dispose();
+                }
+            }
+            catch
+            {
+                /* fall back to polling */
+            }
+
+            if (token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            using var poll = new PeriodicTimer(TimeSpan.FromSeconds(5));
+            try
+            {
+                while (!token.IsCancellationRequested && await poll.WaitForNextTickAsync(token).ConfigureAwait(false))
+                {
+                    if (BrokerCtx.Selected?.Id != broker.Id)
+                    {
+                        break;
+                    }
+
+                    await InvokeAsync(async () =>
+                    {
+                        try
+                        {
+                            _lines = await BrokerGatewayHelper.WithGatewayAsync(
+                                GatewayFactory,
+                                BrokerCtx.Selected,
+                                gw => gw.GetRecentLogsAsync(500),
+                                Array.Empty<string>()).ConfigureAwait(false);
+                        }
+                        catch
+                        {
+                            _lines = Array.Empty<string>();
+                        }
+
+                        StateHasChanged();
+                    }).ConfigureAwait(false);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                /* normal */
+            }
+        }, token);
+    }
 
     private async Task LoadAsync()
     {
-        _lines = await Logs.GetRecentLinesAsync(500).ConfigureAwait(false);
+        if (BrokerCtx.Selected is null)
+        {
+            _lines = Array.Empty<string>();
+            return;
+        }
+
+        _lines = await BrokerGatewayHelper.WithGatewayAsync(
+            GatewayFactory,
+            BrokerCtx.Selected,
+            gw => gw.GetRecentLogsAsync(500),
+            Array.Empty<string>()).ConfigureAwait(false);
+    }
+
+    public void Dispose()
+    {
+        BrokerCtx.Changed -= OnBrokerChanged;
+        StopLiveUpdates();
     }
 }

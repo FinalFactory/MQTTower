@@ -91,23 +91,23 @@ public sealed class DynSecService : IDynSecService
         var tcs = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pending[correlation] = tcs;
 
-        var payload = JsonSerializer.SerializeToUtf8Bytes(command, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
-        using var doc = JsonDocument.Parse(payload);
-        var dict = new Dictionary<string, JsonElement>();
-        foreach (var p in doc.RootElement.EnumerateObject())
-        {
-            dict[p.Name] = p.Value.Clone();
-        }
-
-        dict["correlationData"] = JsonSerializer.SerializeToElement(correlation);
-        var merged = JsonSerializer.SerializeToUtf8Bytes(dict);
-
-        await _publisher.PublishAsync(_options.ControlTopic, merged, 1, false, cancellationToken).ConfigureAwait(false);
-
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        cts.CancelAfter(TimeSpan.FromSeconds(15));
         try
         {
+            var payload = JsonSerializer.SerializeToUtf8Bytes(command, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+            using var doc = JsonDocument.Parse(payload);
+            var dict = new Dictionary<string, JsonElement>();
+            foreach (var p in doc.RootElement.EnumerateObject())
+            {
+                dict[p.Name] = p.Value.Clone();
+            }
+
+            dict["correlationData"] = JsonSerializer.SerializeToElement(correlation);
+            var merged = JsonSerializer.SerializeToUtf8Bytes(dict);
+
+            await _publisher.PublishAsync(_options.ControlTopic, merged, 1, false, cancellationToken).ConfigureAwait(false);
+
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(TimeSpan.FromSeconds(15));
             return await tcs.Task.WaitAsync(cts.Token).ConfigureAwait(false);
         }
         catch

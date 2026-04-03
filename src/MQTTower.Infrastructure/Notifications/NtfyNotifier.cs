@@ -31,6 +31,7 @@ public sealed class NtfyNotifier : INotificationChannel
         using var req = new HttpRequestMessage(HttpMethod.Post, url);
         req.Headers.TryAddWithoutValidation("Title", title);
         req.Content = new StringContent(body, Encoding.UTF8, "text/plain");
-        await client.SendAsync(req, cancellationToken).ConfigureAwait(false);
+        using var res = await client.SendAsync(req, cancellationToken).ConfigureAwait(false);
+        res.EnsureSuccessStatusCode();
     }
 }
