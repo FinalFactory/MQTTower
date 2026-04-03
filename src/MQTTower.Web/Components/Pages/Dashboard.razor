@@ -44,7 +44,13 @@
         @foreach (var row in _brokerSummaries)
         {
             <MudItem xs="12" sm="6" md="4">
-                <MudPaper Class="pa-4 mqtt-broker-summary-card" Elevation="4">
+                <MudPaper Class="pa-4 mqtt-broker-summary-card mqtt-broker-card-selectable"
+                          Elevation="4"
+                          role="button"
+                          tabindex="0"
+                          aria-label="@($"Open dashboard for broker {row.Profile.Name}")"
+                          @onclick="@(() => SelectBrokerAsync(row.Profile))"
+                          @onkeydown="@(e => OnBrokerCardKeyAsync(e, row.Profile))">
                     <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-2">
                         <MudText Typo="Typo.subtitle1">@row.Profile.Name</MudText>
                         <MudChip T="string" Size="Size.Small" Color="@StatusChipColor(row.Profile.Status)" Variant="Variant.Filled">
@@ -184,6 +190,23 @@ else
     private CancellationTokenSource? _liveCts;
 
     private sealed record BrokerSummaryRow(BrokerProfile Profile, BrokerStats Stats);
+
+    private async Task SelectBrokerAsync(BrokerProfile profile)
+    {
+        var b = await Registry.GetAsync(profile.Id).ConfigureAwait(false);
+        if (b is not null)
+        {
+            BrokerCtx.Select(b);
+        }
+    }
+
+    private async Task OnBrokerCardKeyAsync(KeyboardEventArgs e, BrokerProfile profile)
+    {
+        if (e.Key == "Enter" || e.Key == " ")
+        {
+            await SelectBrokerAsync(profile).ConfigureAwait(false);
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {

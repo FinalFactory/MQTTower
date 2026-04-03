@@ -4,7 +4,13 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MQTTower</title>
     <base href="/" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet" />
     <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
     <link rel="stylesheet" href="@Assets["app.css"]" />
@@ -14,10 +20,35 @@
 </head>
 
 <body>
+    <div id="components-reconnect-modal" class="components-reconnect-hide mqtt-reconnect-modal-root" aria-hidden="true">
+        <div class="mqtt-reconnect-backdrop"></div>
+        <div class="mqtt-reconnect-dialog" role="alertdialog" aria-live="polite">
+            <div class="mqtt-reconnect-spinner" aria-hidden="true">
+                <div></div>
+                <div></div>
+            </div>
+            <div class="mqtt-reconnect-active-panel">
+                <p id="mqtt-reconnect-msg-rejoin" class="mqtt-reconnect-primary">Rejoining the server…</p>
+                <p id="mqtt-reconnect-msg-retry" class="mqtt-reconnect-primary" hidden>
+                    Rejoin failed… trying again in
+                    <span id="components-seconds-to-next-attempt">0</span>
+                    <span id="mqtt-reconnect-sec-unit">seconds</span>
+                </p>
+                <p class="mqtt-reconnect-meta" aria-hidden="true">
+                    Attempt <span id="components-reconnect-current-attempt">1</span>
+                </p>
+            </div>
+            <div id="mqtt-reconnect-failed-panel" class="mqtt-reconnect-failed-panel">
+                <p class="mqtt-reconnect-primary">Failed to rejoin. Please retry or reload the page.</p>
+                <button type="button" class="mqtt-reconnect-btn" id="mqtt-reconnect-retry-btn">Retry</button>
+            </div>
+        </div>
+    </div>
     <Routes @rendermode="InteractiveServer" />
     <script src="_content/MudBlazor/MudBlazor.min.js"></script>
     <script src="auth-login.js"></script>
     <script src="_framework/blazor.web.js"></script>
+    <script src="reconnect-modal.js"></script>
 </body>
 
 </html>

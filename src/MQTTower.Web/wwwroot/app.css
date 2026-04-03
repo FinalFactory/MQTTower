@@ -75,6 +75,25 @@ html, body {
     justify-content: center;
 }
 
+.mqtt-login-logo {
+    display: flex;
+    justify-content: center;
+}
+
+.mqtt-login-logo img {
+    height: 100px;
+    width: auto;
+    object-fit: contain;
+    filter: drop-shadow(0 0 16px rgba(0, 229, 255, 0.15));
+}
+
+.mqtt-appbar-icon {
+    height: 28px;
+    width: auto;
+    margin-left: 8px;
+    filter: drop-shadow(0 0 8px rgba(0, 229, 255, 0.12));
+}
+
 /* Cyan → green brand gradient (icon signal / wordmark) */
 .mqtt-accent-gradient {
     background: linear-gradient(135deg, #00e5ff 0%, #0ff197 100%);
@@ -169,7 +188,184 @@ html, body {
     pointer-events: none;
 }
 
+.mqtt-broker-card-selectable {
+    cursor: pointer;
+    transition: box-shadow 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
+}
+
+.mqtt-broker-card-selectable:hover {
+    border-color: rgba(0, 229, 255, 0.35);
+    box-shadow: 0 6px 28px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 229, 255, 0.12);
+}
+
+.mqtt-broker-card-selectable:active {
+    transform: scale(0.992);
+}
+
+.mqtt-broker-card-selectable:focus-visible {
+    outline: 2px solid rgba(15, 241, 151, 0.55);
+    outline-offset: 3px;
+}
+
 .mqtt-topic-node {
     background: #161b22 !important;
     border-color: #21262d !important;
+}
+
+/* Blazor circuit reconnect: custom #components-reconnect-modal (UserSpecifiedDisplay) — dark theme + brand spinner */
+#components-reconnect-modal.mqtt-reconnect-modal-root {
+    position: fixed;
+    inset: 0;
+    z-index: 20000;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+#components-reconnect-modal.components-reconnect-show,
+#components-reconnect-modal.components-reconnect-failed {
+    display: flex;
+}
+
+#components-reconnect-modal.components-reconnect-hide {
+    display: none !important;
+}
+
+.mqtt-reconnect-backdrop {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(13, 17, 23, 0.75);
+    animation: mqtt-reconnect-fade-in 0.35s ease-out;
+}
+
+.mqtt-reconnect-dialog {
+    position: relative;
+    z-index: 1;
+    width: min(22rem, calc(100vw - 2rem));
+    margin: 0 1rem;
+    padding: 1.75rem 1.5rem;
+    border-radius: 12px;
+    border: 1px solid #21262d;
+    background: #161b22;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    text-align: center;
+}
+
+.mqtt-reconnect-primary {
+    margin: 0;
+    color: #e6edf3;
+    font-size: 0.95rem;
+    line-height: 1.45;
+}
+
+.mqtt-reconnect-meta {
+    margin: 0;
+    font-size: 0.8rem;
+    color: #8b949e;
+}
+
+.mqtt-reconnect-spinner {
+    display: block;
+    position: relative;
+    width: 80px;
+    height: 80px;
+}
+
+.mqtt-reconnect-spinner div {
+    position: absolute;
+    border: 3px solid #00e5ff;
+    opacity: 1;
+    border-radius: 50%;
+    animation: mqtt-reconnect-ripple 1.5s cubic-bezier(0, 0.2, 0.8, 1) infinite;
+}
+
+.mqtt-reconnect-spinner div:nth-child(2) {
+    border-color: #0ff197;
+    animation-delay: -0.5s;
+}
+
+#components-reconnect-modal.components-reconnect-failed .mqtt-reconnect-spinner,
+#components-reconnect-modal.components-reconnect-failed .mqtt-reconnect-active-panel {
+    display: none;
+}
+
+.mqtt-reconnect-failed-panel {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    width: 100%;
+}
+
+#components-reconnect-modal.components-reconnect-failed .mqtt-reconnect-failed-panel {
+    display: flex;
+}
+
+.mqtt-reconnect-btn {
+    border: 0;
+    border-radius: 8px;
+    padding: 0.5rem 1.5rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #0d1117;
+    background: linear-gradient(135deg, #00e5ff 0%, #0ff197 100%);
+}
+
+.mqtt-reconnect-btn:hover {
+    filter: brightness(1.08);
+}
+
+.mqtt-reconnect-btn:active {
+    filter: brightness(0.95);
+}
+
+@keyframes mqtt-reconnect-fade-in {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes mqtt-reconnect-ripple {
+    0% {
+        top: 40px;
+        left: 40px;
+        width: 0;
+        height: 0;
+        opacity: 0;
+    }
+
+    4.9% {
+        top: 40px;
+        left: 40px;
+        width: 0;
+        height: 0;
+        opacity: 0;
+    }
+
+    5% {
+        top: 40px;
+        left: 40px;
+        width: 0;
+        height: 0;
+        opacity: 1;
+    }
+
+    100% {
+        top: 0;
+        left: 0;
+        width: 80px;
+        height: 80px;
+        opacity: 0;
+    }
 }

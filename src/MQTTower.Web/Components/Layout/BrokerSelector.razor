@@ -1,5 +1,6 @@
 @inject IBrokerRegistry Registry
 @inject BrokerContext BrokerCtx
+@implements IDisposable
 
 <MudSelect T="Guid?"
            Value="_selectedId"
@@ -21,7 +22,17 @@
 
     protected override async Task OnInitializedAsync()
     {
+        BrokerCtx.Changed += OnBrokerContextChanged;
         await ReloadAsync().ConfigureAwait(false);
+    }
+
+    private void OnBrokerContextChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await ReloadAsync().ConfigureAwait(false);
+            StateHasChanged();
+        });
     }
 
     private async Task ReloadAsync()
@@ -42,4 +53,6 @@
         var b = await Registry.GetAsync(id.Value).ConfigureAwait(false);
         BrokerCtx.Select(b);
     }
+
+    public void Dispose() => BrokerCtx.Changed -= OnBrokerContextChanged;
 }
