@@ -13,6 +13,8 @@
 # When run inside an LXC (no pveversion), runs in-container update (same as /usr/bin/update).
 
 set -Eeuo pipefail
+# core.func ssh_check uses "$SSH_CLIENT"; with set -u an unset parameter errors before [ -n ... ].
+SSH_CLIENT="${SSH_CLIENT:-}"
 
 CS_MISC="${CS_MISC:-https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc}"
 MQTTOWER_DEPLOY_BASE="${MQTTOWER_DEPLOY_BASE:-https://raw.githubusercontent.com/FinalFactory/MQTTower/main/deploy}"
