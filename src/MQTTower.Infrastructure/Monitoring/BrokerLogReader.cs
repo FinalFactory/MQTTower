@@ -26,7 +26,7 @@ public sealed class BrokerLogReader : IBrokerLogReader
         string? line;
         while ((line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false)) is not null)
         {
-            yield return line;
+            yield return MosquittoLogParser.FormatLine(line);
         }
     }
 
@@ -38,6 +38,11 @@ public sealed class BrokerLogReader : IBrokerLogReader
         }
 
         var lines = await File.ReadAllLinesAsync(_options.MosquittoLogPath, cancellationToken).ConfigureAwait(false);
+        for (var i = 0; i < lines.Length; i++)
+        {
+            lines[i] = MosquittoLogParser.FormatLine(lines[i]);
+        }
+
         if (lines.Length <= maxLines)
         {
             return lines;

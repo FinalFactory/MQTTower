@@ -4,12 +4,32 @@
 @using MQTTower.Infrastructure.Agents
 @inject IBrokerGatewayFactory GatewayFactory
 @inject BrokerContext BrokerCtx
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
 
 <PageTitle>Broker Logs</PageTitle>
 
-<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4" Wrap="Wrap.Wrap">
     <MudText Typo="Typo.h4">Broker logs</MudText>
-    <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync" Disabled="@(BrokerCtx.Selected is null)">Refresh</MudButton>
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+        @if (BrokerCtx.Selected is not null && !_loading)
+        {
+            @if (_liveMode == "sse")
+            {
+                <MudChip T="string" Color="Color.Success" Size="Size.Small" Icon="@Icons.Material.Filled.Circle">Live</MudChip>
+            }
+            else if (_liveMode == "poll")
+            {
+                <MudChip T="string" Color="Color.Warning" Size="Size.Small" Icon="@Icons.Material.Filled.Sync">Polling</MudChip>
+            }
+        }
+        <MudTooltip Text="Copy all lines">
+            <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Color="Color.Default" Disabled="@(BrokerCtx.Selected is null || _lines.Count == 0)" OnClick="CopyAllAsync" aria-label="Copy logs to clipboard" />
+        </MudTooltip>
+        <MudTooltip Text="Download as .txt">
+            <MudIconButton Icon="@Icons.Material.Filled.Download" Color="Color.Default" Disabled="@(BrokerCtx.Selected is null || _lines.Count == 0)" OnClick="DownloadAsync" aria-label="Download logs as text file" />
+        </MudTooltip>
+    </MudStack>
 </MudStack>
 
 @if (BrokerCtx.Selected is null)
@@ -18,21 +38,36 @@
 }
 else
 {
-    <MudPaper Class="pa-2 mqtt-chart-card" Elevation="2" Style="max-height:70vh;overflow:auto;font-family:ui-monospace,monospace;font-size:0.85rem;">
-        @foreach (var line in _lines)
-        {
-            <div>@line</div>
-        }
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-2" />
+    }
+    <MudPaper Class="pa-2 mqtt-chart-card" Elevation="2">
+        <div @ref="_logPaper" class="broker-log-scroll" style="max-height:70vh;overflow:auto;font-family:ui-monospace,monospace;font-size:0.85rem;">
+            @foreach (var line in _lines)
+            {
+                <div>@line</div>
+            }
+        </div>
     </MudPaper>
 }
 
 @code {
     private IReadOnlyList<string> _lines = Array.Empty<string>();
     private CancellationTokenSource? _liveCts;
+    private bool _loading;
+    private string _liveMode = "idle";
+    private bool _shouldScroll;
+    private ElementReference _logPaper;
 
     protected override async Task OnInitializedAsync()
     {
         BrokerCtx.Changed += OnBrokerChanged;
+        if (BrokerCtx.Selected is not null)
+        {
+            _loading = true;
+        }
+
         await LoadAsync().ConfigureAwait(false);
         StartLiveUpdates();
     }
@@ -42,6 +77,12 @@ else
         _ = InvokeAsync(async () =>
         {
             StopLiveUpdates();
+            _liveMode = "idle";
+            if (BrokerCtx.Selected is not null)
+            {
+                _loading = true;
+            }
+
             await LoadAsync().ConfigureAwait(false);
             StartLiveUpdates();
             StateHasChanged();
@@ -73,6 +114,7 @@ else
         var broker = BrokerCtx.Selected;
         _liveCts = new CancellationTokenSource();
         var token = _liveCts.Token;
+        _liveMode = "sse";
         _ = Task.Run(async () =>
         {
             try
@@ -88,6 +130,8 @@ else
                                 await InvokeAsync(() =>
                                 {
                                     _lines = lines;
+                                    _liveMode = "sse";
+                                    _shouldScroll = true;
                                     StateHasChanged();
                                     return Task.CompletedTask;
                                 }).ConfigureAwait(false);
@@ -110,7 +154,14 @@ else
                 return;
             }
 
-            using var poll = new PeriodicTimer(TimeSpan.FromSeconds(5));
+            await InvokeAsync(() =>
+            {
+                _liveMode = "poll";
+                StateHasChanged();
+                return Task.CompletedTask;
+            }).ConfigureAwait(false);
+
+            using var poll = new PeriodicTimer(TimeSpan.FromSeconds(2));
             try
             {
                 while (!token.IsCancellationRequested && await poll.WaitForNextTickAsync(token).ConfigureAwait(false))
@@ -129,6 +180,8 @@ else
                                 BrokerCtx.Selected,
                                 gw => gw.GetRecentLogsAsync(500),
                                 Array.Empty<string>()).ConfigureAwait(false);
+                            _liveMode = "poll";
+                            _shouldScroll = true;
                         }
                         catch
                         {
@@ -151,14 +204,81 @@ else
         if (BrokerCtx.Selected is null)
         {
             _lines = Array.Empty<string>();
+            _loading = false;
             return;
         }
 
-        _lines = await BrokerGatewayHelper.WithGatewayAsync(
-            GatewayFactory,
-            BrokerCtx.Selected,
-            gw => gw.GetRecentLogsAsync(500),
-            Array.Empty<string>()).ConfigureAwait(false);
+        _loading = true;
+        try
+        {
+            await InvokeAsync(StateHasChanged).ConfigureAwait(false);
+            _lines = await BrokerGatewayHelper.WithGatewayAsync(
+                GatewayFactory,
+                BrokerCtx.Selected,
+                gw => gw.GetRecentLogsAsync(500),
+                Array.Empty<string>()).ConfigureAwait(false);
+            _shouldScroll = true;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task CopyAllAsync()
+    {
+        if (_lines.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            var text = string.Join(Environment.NewLine, _lines);
+            await JS.InvokeVoidAsync("mqttowerBrokerLogs.copyToClipboard", text).ConfigureAwait(false);
+            Snackbar.Add("Copied to clipboard", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Copy failed: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DownloadAsync()
+    {
+        if (BrokerCtx.Selected is null || _lines.Count == 0)
+        {
+            return;
+        }
+
+        var rawName = string.IsNullOrWhiteSpace(BrokerCtx.Selected.Name) ? "broker" : BrokerCtx.Selected.Name;
+        var safeName = string.Join("_", rawName.Split(Path.GetInvalidFileNameChars()));
+        var file = $"broker-logs-{safeName}-{DateTime.Now:yyyyMMdd-HHmmss}.txt";
+        var text = string.Join(Environment.NewLine, _lines);
+        try
+        {
+            await JS.InvokeVoidAsync("mqttowerBrokerLogs.downloadText", file, text).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Download failed: {ex.Message}", Severity.Error);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_shouldScroll && !_loading)
+        {
+            _shouldScroll = false;
+            try
+            {
+                await JS.InvokeVoidAsync("mqttowerBrokerLogs.scrollToBottom", _logPaper).ConfigureAwait(false);
+            }
+            catch
+            {
+                /* ignore */
+            }
+        }
     }
 
     public void Dispose()
