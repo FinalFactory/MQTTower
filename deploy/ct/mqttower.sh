@@ -330,6 +330,9 @@ mqttower_build_container() {
   # --- Run MQTTower install script (the ONLY difference vs framework build_container) ---
   # Use pct exec (not lxc-attach): unprivileged LXC often returns EPERM from lxc-attach, and
   # pct exec does not inherit the host env — pass MQTTOWER_* explicitly (collect_mqttower_env).
+  # Append to BUILD_LOG (same as base apt) so failures show the real error; the UI often maps
+  # inner exit 1 to "Operation not permitted" even when the cause is e.g. apt or curl to GitHub.
+  msg_info "Running MQTTower install script (full output: ${BUILD_LOG})"
   pct exec "$CTID" -- env \
     CONTAINER_INSTALLING=true \
     "MQTTOWER_DEPLOY_MODE=${DEPLOY_MODE}" \
@@ -349,7 +352,10 @@ mqttower_build_container() {
     "MQTTOWER_WEB_PORT=${MQTTOWER_WEB_PORT:-}" \
     "MQTTOWER_LOCAL_AGENT_URL=${MQTTOWER_LOCAL_AGENT_URL:-}" \
     "MQTTOWER_LOCAL_AGENT_API_KEY=${MQTTOWER_LOCAL_AGENT_API_KEY:-}" \
-    bash -c "$(curl -fsSL "$MQTTOWER_INSTALL_URL")"
+    bash -c "$(curl -fsSL "$MQTTOWER_INSTALL_URL")" >>"$BUILD_LOG" 2>&1 || {
+    msg_error "MQTTower install script failed — see tail of ${BUILD_LOG}"
+    exit 1
+  }
 }
 
 pick_deploy_mode
