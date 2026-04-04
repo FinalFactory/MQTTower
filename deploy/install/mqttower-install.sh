@@ -4,8 +4,6 @@
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://github.com/FinalFactory/MQTTower
 
-set -Eeuo pipefail
-
 : "${GITHUB_REPO_OWNER:=FinalFactory}"
 : "${GITHUB_REPO_NAME:=MQTTower}"
 : "${MQTTOWER_DEPLOY_MODE:?MQTTOWER_DEPLOY_MODE must be set (broker|dashboard|fullstack)}"
@@ -423,24 +421,6 @@ main() {
   customize
   write_mqttower_update_command
   cleanup_lxc
-
-  msg_ok "Completed successfully!"
-  echo -e "${CREATING}${GN}MQTTower setup has been successfully initialized!${CL}"
-  local ip
-  ip="$(get_ipv4)"
-  case "${MQTTOWER_DEPLOY_MODE}" in
-    broker)
-      echo -e "${INFO}${YW} MQTT ${MQTTOWER_MQTT_PORT} — Agent ${TAB}${GATEWAY}${BGN}http://${ip:-127.0.0.1}:${MQTTOWER_AGENT_PORT}${CL}"
-      echo -e "${TAB}${INFO}DynSec user ${MQTTOWER_MQTT_USER} — use the same MQTTower__BrokerUsername/Password on the dashboard.${CL}"
-      ;;
-    dashboard)
-      echo -e "${INFO}${YW} Open ${TAB}${GATEWAY}${BGN}http://${ip:-127.0.0.1}:${MQTTOWER_WEB_PORT}${CL}"
-      ;;
-    fullstack)
-      echo -e "${INFO}${YW} Dashboard ${TAB}${GATEWAY}${BGN}http://${ip:-127.0.0.1}:${MQTTOWER_WEB_PORT}${CL} — MQTT ${MQTTOWER_MQTT_PORT}, Agent http://${ip:-127.0.0.1}:${MQTTOWER_AGENT_PORT}"
-      echo -e "${TAB}${INFO}Local agent is pre-linked (Local broker profile).${CL}"
-      ;;
-  esac
 }
 
 main "$@"
