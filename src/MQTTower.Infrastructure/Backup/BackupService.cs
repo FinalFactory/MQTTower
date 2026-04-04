@@ -1,5 +1,4 @@
 using System.IO.Compression;
-using System.Text;
 using Microsoft.Data.Sqlite;
 using MQTTower.Core.Interfaces;
 using Microsoft.Extensions.Options;
@@ -26,14 +25,6 @@ public sealed class BackupService : IBackupService
             await using (var s = dbEntry.Open())
             {
                 await s.WriteAsync(dbBytes, cancellationToken).ConfigureAwait(false);
-            }
-
-            if (File.Exists(_options.MosquittoConfigPath))
-            {
-                var cfg = await File.ReadAllTextAsync(_options.MosquittoConfigPath, cancellationToken).ConfigureAwait(false);
-                var cfgEntry = zip.CreateEntry("mosquitto.conf");
-                await using var s = cfgEntry.Open();
-                await s.WriteAsync(Encoding.UTF8.GetBytes(cfg), cancellationToken).ConfigureAwait(false);
             }
         }
 

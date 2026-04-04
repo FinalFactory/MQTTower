@@ -4,16 +4,11 @@
 @using MQTTower.Infrastructure.Agents
 @inject IBrokerGatewayFactory GatewayFactory
 @inject BrokerContext BrokerCtx
-@inject ITopicExplorerService LocalTopics
 
 <PageTitle>Topic Explorer</PageTitle>
 
 <MudText Typo="Typo.h4" Class="mb-4">Topic explorer</MudText>
-@if (BrokerCtx.Selected?.UseLocalServices == true)
-{
-    <MudText Typo="Typo.caption" Class="mqtt-muted mb-4">Subscribes to <code>#</code> — tree updates as messages arrive (local broker).</MudText>
-}
-else if (BrokerCtx.Selected is not null)
+@if (BrokerCtx.Selected is not null)
 {
     <MudText Typo="Typo.caption" Class="mqtt-muted mb-4">Live topic tree from agent (SSE with REST fallback).</MudText>
 }
@@ -34,22 +29,8 @@ else
     protected override async Task OnInitializedAsync()
     {
         BrokerCtx.Changed += OnBrokerChanged;
-        if (BrokerCtx.Selected?.UseLocalServices == true)
-        {
-            LocalTopics.Changed += OnLocalTopicsChanged;
-        }
-
         await RefreshAsync().ConfigureAwait(false);
-        StartLiveUpdatesIfRemote();
-    }
-
-    private void OnLocalTopicsChanged(object? sender, EventArgs e)
-    {
-        _ = InvokeAsync(() =>
-        {
-            _roots = LocalTopics.GetRoots();
-            StateHasChanged();
-        });
+        StartLiveUpdates();
     }
 
     private void OnBrokerChanged()
@@ -57,18 +38,8 @@ else
         _ = InvokeAsync(async () =>
         {
             StopLiveUpdates();
-            if (BrokerCtx.Selected?.UseLocalServices == true)
-            {
-                LocalTopics.Changed -= OnLocalTopicsChanged;
-                LocalTopics.Changed += OnLocalTopicsChanged;
-            }
-            else
-            {
-                LocalTopics.Changed -= OnLocalTopicsChanged;
-            }
-
             await RefreshAsync().ConfigureAwait(false);
-            StartLiveUpdatesIfRemote();
+            StartLiveUpdates();
             StateHasChanged();
         });
     }
@@ -88,9 +59,9 @@ else
         _liveCts = null;
     }
 
-    private void StartLiveUpdatesIfRemote()
+    private void StartLiveUpdates()
     {
-        if (BrokerCtx.Selected is null || BrokerCtx.Selected.UseLocalServices)
+        if (BrokerCtx.Selected is null || string.IsNullOrWhiteSpace(BrokerCtx.Selected.AgentUrl))
         {
             return;
         }
@@ -179,12 +150,6 @@ else
             return;
         }
 
-        if (BrokerCtx.Selected.UseLocalServices)
-        {
-            _roots = LocalTopics.GetRoots();
-            return;
-        }
-
         _roots = await BrokerGatewayHelper.WithGatewayAsync(
             GatewayFactory,
             BrokerCtx.Selected,
@@ -195,7 +160,6 @@ else
     public void Dispose()
     {
         BrokerCtx.Changed -= OnBrokerChanged;
-        LocalTopics.Changed -= OnLocalTopicsChanged;
         StopLiveUpdates();
     }
 }

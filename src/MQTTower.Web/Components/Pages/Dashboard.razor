@@ -212,7 +212,7 @@ else
     {
         BrokerCtx.Changed += OnBrokerChanged;
         await LoadAsync().ConfigureAwait(false);
-        StartLiveUpdatesIfRemote();
+        StartLiveUpdates();
     }
 
     private void OnBrokerChanged()
@@ -221,7 +221,7 @@ else
         {
             StopLiveUpdates();
             await LoadAsync().ConfigureAwait(false);
-            StartLiveUpdatesIfRemote();
+            StartLiveUpdates();
             StateHasChanged();
         });
     }
@@ -241,9 +241,9 @@ else
         _liveCts = null;
     }
 
-    private void StartLiveUpdatesIfRemote()
+    private void StartLiveUpdates()
     {
-        if (BrokerCtx.Selected is null || BrokerCtx.Selected.UseLocalServices)
+        if (BrokerCtx.Selected is null || string.IsNullOrWhiteSpace(BrokerCtx.Selected.AgentUrl))
         {
             return;
         }

@@ -40,13 +40,14 @@ public sealed class BrokerSeedHostedService : IHostedService
 
         if (row is null)
         {
+            var initialStatus = string.IsNullOrWhiteSpace(agentUrl) ? BrokerStatus.Offline : BrokerStatus.Unknown;
             db.BrokerProfiles.Add(new BrokerProfileEntity
             {
                 Id = localId,
                 Name = "Local",
                 AgentUrl = agentUrl,
                 ApiKey = apiKey,
-                Status = (int)BrokerStatus.Unknown,
+                Status = (int)initialStatus,
                 RegisteredAt = DateTimeOffset.UtcNow,
                 Approved = true,
                 UseLocalServices = true,

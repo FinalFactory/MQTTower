@@ -30,6 +30,7 @@ services:
       MQTTower__MosquittoLogPath: /mosquitto/log/mosquitto.log
       MQTTower__BrokerUsername: ${MQTTOWER_MQTT_USER:-mqttower-admin}
       MQTTower__BrokerPassword: ${MQTTOWER_MQTT_PASS:-changeme-mqtt-dev}
+      Agent__WatcherNotifySecret: ${WATCHER_NOTIFY_SECRET:-${AGENT_API_KEY:-agent-dev-key}}
     volumes:
       - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
       - mqttower_data:/mosquitto/data
@@ -50,19 +51,12 @@ services:
       MQTTOWER_ADMIN_PASS: changeme
       ConnectionStrings__Default: Data Source=/data/mqttower/mqttower.db
       MQTTower__DatabasePath: Data Source=/data/mqttower/mqttower.db
-      MQTTower__BrokerHost: mqttower-broker
-      MQTTower__BrokerPort: 1883
-      MQTTower__BrokerUsername: ${MQTTOWER_MQTT_USER:-mqttower-admin}
-      MQTTower__BrokerPassword: ${MQTTOWER_MQTT_PASS:-changeme-mqtt-dev}
-      MQTTower__MosquittoConfigPath: /mosquitto/config/mosquitto.conf
-      MQTTower__MosquittoLogPath: /mosquitto/log/mosquitto.log
       MQTTower__RegistrationSecret: ${REGISTRATION_SECRET:-dev-registration-secret}
       MQTTower__LocalAgentUrl: http://mqttower-broker:5080
       MQTTower__LocalAgentApiKey: ${AGENT_API_KEY:-agent-dev-key}
+      MQTTower__WatcherNotifySecret: ${WATCHER_NOTIFY_SECRET:-${AGENT_API_KEY:-agent-dev-key}}
     volumes:
       - mqttower_data:/data
-      - mosquitto_logs:/mosquitto/log
-      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
     depends_on:
       - mqttower-broker
 
@@ -93,6 +87,7 @@ services:
       MQTTower__MosquittoLogPath: /mosquitto/log/mosquitto.log
       MQTTower__BrokerUsername: ${MQTTOWER_MQTT_USER_B:-mqttower-admin-b}
       MQTTower__BrokerPassword: ${MQTTOWER_MQTT_PASS_B:-changeme-mqtt-dev-b}
+      Agent__WatcherNotifySecret: ${WATCHER_NOTIFY_SECRET:-${AGENT_API_KEY_B:-agent-dev-key-b}}
     volumes:
       - ./mosquitto/mosquitto-b.conf:/mosquitto/config/mosquitto.conf
       - mqttower_data_b:/mosquitto/data

@@ -104,6 +104,8 @@ builder.Services.AddScoped<IBrokerConfigStore, FileBrokerConfigStore>();
 builder.Services.AddScoped<IBrokerLogReader, BrokerLogReader>();
 
 builder.Services.AddHostedService<MqttStartupHostedService>();
+builder.Services.AddSingleton<AgentWatcherStore>();
+builder.Services.AddHostedService<AgentWatcherHostedService>();
 builder.Services.AddHttpClient();
 builder.Services.AddHttpClient(nameof(AgentRegistrationHostedService), (sp, c) =>
 {
@@ -163,6 +165,18 @@ app.MapGet("/health", (MqttConnectionService m, ILoggerFactory loggerFactory) =>
 }).AllowAnonymous();
 
 var api = app.MapGroup("/api").RequireRateLimiting("agent");
+
+api.MapPost("/agent/key", (SetApiKeyBody body, AgentApiKeyState state) =>
+{
+    state.SetKey(body.ApiKey);
+    return Results.Ok();
+});
+
+api.MapPut("/watchers/sync", (AgentWatcherStore store, List<TopicWatcher>? body) =>
+{
+    store.ReplaceAll(body ?? new List<TopicWatcher>());
+    return Results.NoContent();
+});
 
 api.MapGet("/stats", (IBrokerStatsProvider p) => Results.Ok(p.GetCurrent()));
 

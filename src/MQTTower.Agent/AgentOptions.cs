@@ -24,4 +24,7 @@ public sealed class AgentOptions
     public string? CertificatePassword { get; set; }
     /// <summary>Public base URL of this agent (for registration). Defaults to listen URL if unset.</summary>
     public string? PublicAgentUrl { get; set; }
+
+    /// <summary>Shared secret with the dashboard for <c>POST /api/watcher-notify</c> (must match <c>MQTTower:WatcherNotifySecret</c>).</summary>
+    public string? WatcherNotifySecret { get; set; }
 }

@@ -43,6 +43,14 @@ rand_hex() {
   openssl rand -hex 16 2>/dev/null || head -c 16 /dev/urandom | xxd -p
 }
 
+# Append KEY=VALUE to file only if KEY is not already present (safe re-runs / new version keys).
+ensure_env_key() {
+  local file="$1" key="$2" value="$3"
+  if ! grep -q "^${key}=" "$file" 2>/dev/null; then
+    printf '%s=%s\n' "$key" "$value" >> "$file"
+  fi
+}
+
 install_dotnet_runtime() {
   export DEBIAN_FRONTEND=noninteractive
   msg_info "Installing Microsoft .NET repository"
@@ -92,11 +100,16 @@ init_dynsec() {
 
 write_mosquitto_conf() {
   local port="$1"
+  local conf="/etc/mosquitto/conf.d/mqttower.conf"
+  if [[ -f "$conf" ]]; then
+    msg_info "Mosquitto config already exists: $conf (skipping)"
+    return 0
+  fi
   local plugin
   plugin="$(dynsec_plugin_path)"
   mkdir -p /var/lib/mosquitto
   chown mosquitto:mosquitto /var/lib/mosquitto 2>/dev/null || true
-  cat <<EOF >/etc/mosquitto/conf.d/mqttower.conf
+  cat <<EOF >"$conf"
 per_listener_settings false
 allow_anonymous false
 persistence true
@@ -109,13 +122,39 @@ plugin_opt_config_file /var/lib/mosquitto/dynamic-security.json
 EOF
   touch /var/log/mosquitto/mosquitto.log
   chown mosquitto:mosquitto /var/log/mosquitto/mosquitto.log 2>/dev/null || true
-  msg_ok "Mosquitto config: /etc/mosquitto/conf.d/mqttower.conf (listener ${port}, DynSec)"
+  msg_ok "Mosquitto config: $conf (listener ${port}, DynSec)"
 }
 
 write_agent_env() {
+  local f="/etc/mqttower-agent/environment"
   mkdir -p /etc/mqttower-agent
   umask 077
-  cat <<EOF >/etc/mqttower-agent/environment
+  : "${MQTTOWER_MQTT_USER:=mqttower-admin}"
+  : "${MQTTOWER_MQTT_PASS:=}"
+  : "${MQTTOWER_AGENT_PORT:=5080}"
+  : "${MQTTOWER_DASHBOARD_URL:=}"
+  : "${MQTTOWER_REG_SECRET:=}"
+  : "${MQTTOWER_API_KEY:=}"
+  : "${MQTTOWER_PUBLIC_AGENT_URL:=}"
+  if [[ -f "$f" ]]; then
+    msg_info "Agent environment exists; merging new keys only."
+    ensure_env_key "$f" "ASPNETCORE_ENVIRONMENT" "Production"
+    ensure_env_key "$f" "MQTTower__MosquittoConfigPath" "/etc/mosquitto/conf.d/mqttower.conf"
+    ensure_env_key "$f" "MQTTower__MosquittoLogPath" "/var/log/mosquitto/mosquitto.log"
+    ensure_env_key "$f" "MQTTower__BrokerUsername" "${MQTTOWER_MQTT_USER}"
+    ensure_env_key "$f" "MQTTower__BrokerPassword" "${MQTTOWER_MQTT_PASS}"
+    ensure_env_key "$f" "Agent__HttpPort" "${MQTTOWER_AGENT_PORT}"
+    ensure_env_key "$f" "Agent__HttpsPort" "0"
+    ensure_env_key "$f" "Agent__DashboardUrl" "${MQTTOWER_DASHBOARD_URL}"
+    ensure_env_key "$f" "Agent__RegistrationToken" "${MQTTOWER_REG_SECRET}"
+    ensure_env_key "$f" "Agent__ApiKey" "${MQTTOWER_API_KEY}"
+    ensure_env_key "$f" "Agent__AutoRegister" "true"
+    ensure_env_key "$f" "Agent__PublicAgentUrl" "${MQTTOWER_PUBLIC_AGENT_URL}"
+    ensure_env_key "$f" "Agent__RestartCommand" "systemctl reload mosquitto"
+    ensure_env_key "$f" "Agent__WatcherNotifySecret" "${MQTTOWER_WATCHER_NOTIFY_SECRET:-${MQTTOWER_API_KEY:-}}"
+    msg_ok "Updated ${f} (merge)"
+  else
+    cat <<EOF >"$f"
 ASPNETCORE_ENVIRONMENT=Production
 MQTTower__MosquittoConfigPath=/etc/mosquitto/conf.d/mqttower.conf
 MQTTower__MosquittoLogPath=/var/log/mosquitto/mosquitto.log
@@ -129,9 +168,11 @@ Agent__ApiKey=${MQTTOWER_API_KEY}
 Agent__AutoRegister=true
 Agent__PublicAgentUrl=${MQTTOWER_PUBLIC_AGENT_URL}
 Agent__RestartCommand=systemctl reload mosquitto
+Agent__WatcherNotifySecret=${MQTTOWER_WATCHER_NOTIFY_SECRET:-${MQTTOWER_API_KEY:-}}
 EOF
-  chmod 600 /etc/mqttower-agent/environment
-  msg_ok "Wrote /etc/mqttower-agent/environment"
+    msg_ok "Wrote ${f}"
+  fi
+  chmod 600 "$f"
 }
 
 write_agent_systemd() {
@@ -225,8 +266,12 @@ install_broker_stack() {
   install_dotnet_runtime
   migrate_legacy_version
 
-  collect_broker_interactive
-  resolve_public_url
+  if [[ -f /etc/mqttower-agent/environment ]]; then
+    msg_info "Agent environment exists; skipping interactive prompts (merge path)."
+  else
+    collect_broker_interactive
+    resolve_public_url
+  fi
 
   init_dynsec
 
@@ -241,9 +286,8 @@ install_broker_stack() {
 }
 
 all_dashboard_env_preset() {
-  [[ -n "${MQTTOWER_ADMIN_USER:-}" && -n "${MQTTOWER_ADMIN_PASS:-}" && -n "${MQTTOWER_REG_SECRET:-}" \
-    && -n "${MQTTOWER_BROKER_HOST:-}" && -n "${MQTTOWER_BROKER_PORT:-}" && -n "${MQTTOWER_WEB_PORT:-}" \
-    && -n "${MQTTOWER_MQTT_USER:-}" && -n "${MQTTOWER_MQTT_PASS:-}" ]]
+  [[ -n "${MQTTOWER_ADMIN_USER:-}" && -n "${MQTTOWER_ADMIN_PASS:-}" \
+    && -n "${MQTTOWER_REG_SECRET:-}" && -n "${MQTTOWER_WEB_PORT:-}" ]]
 }
 
 collect_dashboard_interactive() {
@@ -260,59 +304,62 @@ collect_dashboard_interactive() {
     msg_info "Generated admin password: ${MQTTOWER_ADMIN_PASS}"
   fi
   read -r -p "${TAB3}Registration secret: " MQTTOWER_REG_SECRET || true
-  read -r -p "${TAB3}MQTT broker host (IP of broker LXC): " MQTTOWER_BROKER_HOST || true
-  : "${MQTTOWER_BROKER_PORT:=1883}"
-  read -r -p "${TAB3}MQTT broker port [${MQTTOWER_BROKER_PORT}]: " _bp || true
-  [[ -n "${_bp:-}" ]] && MQTTOWER_BROKER_PORT="$_bp"
   : "${MQTTOWER_WEB_PORT:=8080}"
   read -r -p "${TAB3}Dashboard HTTP port [${MQTTOWER_WEB_PORT}]: " _wp || true
   [[ -n "${_wp:-}" ]] && MQTTOWER_WEB_PORT="$_wp"
-  : "${MQTTOWER_MQTT_USER:=mqttower-admin}"
-  read -r -p "${TAB3}MQTT broker username (DynSec) [${MQTTOWER_MQTT_USER}]: " _mu || true
-  [[ -n "${_mu:-}" ]] && MQTTOWER_MQTT_USER="$_mu"
-  read -r -p "${TAB3}MQTT broker password (DynSec): " MQTTOWER_MQTT_PASS || true
-  [[ -n "${MQTTOWER_MQTT_PASS:-}" ]] || {
-    msg_error "MQTT broker password is required."
-    exit 1
-  }
 }
 
 prepare_data_dir() {
   mkdir -p "$DATA_DIR"
-  touch "${DATA_DIR}/mosquitto.log"
-  if [[ ! -f "${DATA_DIR}/mosquitto.conf" ]]; then
-    echo "# Placeholder for default local broker profile." >"${DATA_DIR}/mosquitto.conf"
-  fi
   chmod 755 "$DATA_DIR"
   msg_ok "Data directory: ${DATA_DIR}"
 }
 
+# Dashboard talks to brokers only via agents (HTTP). Optional: LocalAgentUrl / LocalAgentApiKey for the co-located agent.
 write_web_env() {
+  local f="/etc/mqttower/environment"
   mkdir -p /etc/mqttower
   umask 077
-  cat <<EOF >/etc/mqttower/environment
+  : "${MQTTOWER_WEB_PORT:=8080}"
+  if [[ -f "$f" ]]; then
+    msg_info "Dashboard environment exists; merging new keys only."
+    : "${MQTTOWER_ADMIN_USER:=admin}"
+    : "${MQTTOWER_ADMIN_PASS:=changeme}"
+    ensure_env_key "$f" "ASPNETCORE_ENVIRONMENT" "Production"
+    ensure_env_key "$f" "ASPNETCORE_URLS" "http://+:${MQTTOWER_WEB_PORT}"
+    ensure_env_key "$f" "ConnectionStrings__Default" "Data Source=${DATA_DIR}/mqttower.db"
+    ensure_env_key "$f" "MQTTower__DatabasePath" "Data Source=${DATA_DIR}/mqttower.db"
+    ensure_env_key "$f" "MQTTower__RegistrationSecret" "${MQTTOWER_REG_SECRET:-}"
+    ensure_env_key "$f" "MQTTower__WatcherNotifySecret" "${MQTTOWER_WATCHER_NOTIFY_SECRET:-}"
+    ensure_env_key "$f" "MQTTOWER_ADMIN_USER" "${MQTTOWER_ADMIN_USER}"
+    ensure_env_key "$f" "MQTTOWER_ADMIN_PASS" "${MQTTOWER_ADMIN_PASS}"
+    if [[ -n "${MQTTOWER_LOCAL_AGENT_URL:-}" ]]; then
+      ensure_env_key "$f" "MQTTower__LocalAgentUrl" "${MQTTOWER_LOCAL_AGENT_URL}"
+    fi
+    if [[ -n "${MQTTOWER_LOCAL_AGENT_API_KEY:-}" ]]; then
+      ensure_env_key "$f" "MQTTower__LocalAgentApiKey" "${MQTTOWER_LOCAL_AGENT_API_KEY}"
+    fi
+    msg_ok "Updated ${f} (merge)"
+  else
+    cat <<EOF >"$f"
 ASPNETCORE_ENVIRONMENT=Production
 ASPNETCORE_URLS=http://+:${MQTTOWER_WEB_PORT}
 ConnectionStrings__Default=Data Source=${DATA_DIR}/mqttower.db
 MQTTower__DatabasePath=Data Source=${DATA_DIR}/mqttower.db
-MQTTower__BrokerHost=${MQTTOWER_BROKER_HOST}
-MQTTower__BrokerPort=${MQTTOWER_BROKER_PORT}
-MQTTower__BrokerUsername=${MQTTOWER_MQTT_USER}
-MQTTower__BrokerPassword=${MQTTOWER_MQTT_PASS}
-MQTTower__MosquittoConfigPath=${DATA_DIR}/mosquitto.conf
-MQTTower__MosquittoLogPath=${DATA_DIR}/mosquitto.log
 MQTTower__RegistrationSecret=${MQTTOWER_REG_SECRET}
+MQTTower__WatcherNotifySecret=${MQTTOWER_WATCHER_NOTIFY_SECRET:-}
 MQTTOWER_ADMIN_USER=${MQTTOWER_ADMIN_USER}
 MQTTOWER_ADMIN_PASS=${MQTTOWER_ADMIN_PASS}
 EOF
-  if [[ -n "${MQTTOWER_LOCAL_AGENT_URL:-}" ]]; then
-    printf 'MQTTower__LocalAgentUrl=%s\n' "${MQTTOWER_LOCAL_AGENT_URL}" >>/etc/mqttower/environment
+    if [[ -n "${MQTTOWER_LOCAL_AGENT_URL:-}" ]]; then
+      printf 'MQTTower__LocalAgentUrl=%s\n' "${MQTTOWER_LOCAL_AGENT_URL}" >>"$f"
+    fi
+    if [[ -n "${MQTTOWER_LOCAL_AGENT_API_KEY:-}" ]]; then
+      printf 'MQTTower__LocalAgentApiKey=%s\n' "${MQTTOWER_LOCAL_AGENT_API_KEY}" >>"$f"
+    fi
+    msg_ok "Wrote ${f}"
   fi
-  if [[ -n "${MQTTOWER_LOCAL_AGENT_API_KEY:-}" ]]; then
-    printf 'MQTTower__LocalAgentApiKey=%s\n' "${MQTTOWER_LOCAL_AGENT_API_KEY}" >>/etc/mqttower/environment
-  fi
-  chmod 600 /etc/mqttower/environment
-  msg_ok "Wrote /etc/mqttower/environment"
+  chmod 600 "$f"
 }
 
 write_web_systemd() {
@@ -338,7 +385,12 @@ EOF
 install_dashboard_stack() {
   install_dotnet_runtime
   migrate_legacy_version
-  collect_dashboard_interactive
+  if [[ -f /etc/mqttower/environment ]]; then
+    msg_info "Dashboard environment exists; skipping interactive prompts (merge path)."
+  else
+    collect_dashboard_interactive
+  fi
+  : "${MQTTOWER_WEB_PORT:=8080}"
 
   fetch_and_deploy_gh_release "mqttower-web" "${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}" "prebuild" "latest" "${INSTALL_DIR_WEB}" "${ASSET_WEB}"
 
@@ -368,6 +420,7 @@ install_fullstack() {
   MQTTOWER_PUBLIC_AGENT_URL="${MQTTOWER_PUBLIC_AGENT_URL:-http://127.0.0.1:${MQTTOWER_AGENT_PORT}}"
   MQTTOWER_LOCAL_AGENT_URL="${MQTTOWER_LOCAL_AGENT_URL:-${MQTTOWER_PUBLIC_AGENT_URL}}"
   MQTTOWER_LOCAL_AGENT_API_KEY="${MQTTOWER_LOCAL_AGENT_API_KEY:-${MQTTOWER_API_KEY}}"
+  MQTTOWER_WATCHER_NOTIFY_SECRET="${MQTTOWER_WATCHER_NOTIFY_SECRET:-${MQTTOWER_API_KEY}}"
 
   init_dynsec
 

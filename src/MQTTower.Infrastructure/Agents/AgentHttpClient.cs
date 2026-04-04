@@ -164,6 +164,12 @@ public sealed class AgentHttpClient : IBrokerGateway, IDisposable
         return await _http.PostAsJsonAsync("api/agent/key", new SetApiKeyDto(newApiKey), Json, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>Replaces the agent-side watcher definitions (evaluated on the agent host).</summary>
+    public async Task<HttpResponseMessage> SyncWatchersAsync(IReadOnlyList<TopicWatcher> watchers, CancellationToken cancellationToken = default)
+    {
+        return await _http.PutAsJsonAsync("api/watchers/sync", watchers.ToList(), Json, cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>Reads the agent <c>/api/stats/stream</c> SSE endpoint until cancelled or the stream ends.</summary>
     public async Task RunStatsStreamLoopAsync(Func<BrokerStats, Task> onStats, CancellationToken cancellationToken = default)
     {

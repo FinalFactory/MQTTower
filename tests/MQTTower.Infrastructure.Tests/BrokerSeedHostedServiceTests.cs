@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using MQTTower.Core;
+using MQTTower.Core.Models;
 using MQTTower.Infrastructure.Data;
 using MQTTower.Infrastructure.Hosting;
 using MQTTower.Infrastructure.Options;
@@ -42,6 +43,7 @@ public sealed class BrokerSeedHostedServiceTests
             var row = await db.BrokerProfiles.SingleAsync();
             row.Id.Should().Be(BrokerConstants.DefaultLocalBrokerId);
             row.UseLocalServices.Should().BeTrue();
+            row.Status.Should().Be((int)BrokerStatus.Offline);
         }
 
         await seed.StopAsync(CancellationToken.None);

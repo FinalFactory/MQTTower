@@ -3,7 +3,7 @@ using MQTTower.Core.TopicExplorer;
 
 namespace MQTTower.Core.Interfaces;
 
-/// <summary>Per-broker operations (local in-process or remote agent HTTP).</summary>
+/// <summary>Per-broker operations via the agent HTTP API.</summary>
 public interface IBrokerGateway
 {
     Guid BrokerId { get; }

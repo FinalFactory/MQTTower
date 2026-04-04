@@ -47,28 +47,10 @@ public sealed class BrokerHealthMonitor : BackgroundService
                 continue;
             }
 
-            if (b.UseLocalServices)
+            if (string.IsNullOrWhiteSpace(b.AgentUrl))
             {
-                IBrokerGateway? localGw = null;
-                try
-                {
-                    localGw = factory.Create(b);
-                    var info = await localGw.GetHealthAsync(ct).ConfigureAwait(false);
-                    b.Status = info.MqttConnected ? BrokerStatus.Online : BrokerStatus.Degraded;
-                    b.LastSeen = DateTimeOffset.UtcNow;
-                    await registry.UpdateAsync(b, ct).ConfigureAwait(false);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogDebug(ex, "Local broker health");
-                    b.Status = BrokerStatus.Offline;
-                    await registry.UpdateAsync(b, ct).ConfigureAwait(false);
-                }
-                finally
-                {
-                    (localGw as IDisposable)?.Dispose();
-                }
-
+                b.Status = BrokerStatus.Offline;
+                await registry.UpdateAsync(b, ct).ConfigureAwait(false);
                 continue;
             }
 
@@ -88,7 +70,7 @@ public sealed class BrokerHealthMonitor : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogDebug(ex, "Remote broker {Id} unreachable", b.Id);
+                _logger.LogDebug(ex, "Broker {Id} unreachable", b.Id);
                 b.Status = BrokerStatus.Offline;
                 await registry.UpdateAsync(b, ct).ConfigureAwait(false);
             }

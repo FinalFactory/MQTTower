@@ -46,10 +46,10 @@
             {
                 <MudButton Size="Size.Small" Color="Color.Primary" OnClick="@(() => ApproveAsync(row.Id))">Approve</MudButton>
             }
+            <MudButton Size="Size.Small" Color="Color.Primary" Class="ml-1" OnClick="@(() => OpenEditAsync(row))">Edit</MudButton>
+            <MudButton Size="Size.Small" Color="Color.Warning" Class="ml-1" OnClick="@(() => RotateKeyAsync(row))" Disabled="@(string.IsNullOrWhiteSpace(row.AgentUrl))">Rotate key</MudButton>
             @if (!row.UseLocalServices)
             {
-                <MudButton Size="Size.Small" Color="Color.Primary" Class="ml-1" OnClick="@(() => OpenEditAsync(row))">Edit</MudButton>
-                <MudButton Size="Size.Small" Color="Color.Warning" Class="ml-1" OnClick="@(() => RotateKeyAsync(row))">Rotate key</MudButton>
                 <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => DeleteAsync(row.Id))" aria-label="delete" />
             }
         </MudTd>

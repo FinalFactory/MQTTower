@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
-using MQTTower.Core;
 using MQTTower.Core.Interfaces;
 using MQTTower.Core.Models;
 using MQTTower.Infrastructure.Hosting;
@@ -12,35 +11,45 @@ namespace MQTTower.Infrastructure.Tests;
 public sealed class MetricsCollectorHostedServiceTests
 {
     [Fact]
-    public async Task CollectMetricsOnceAsync_appends_two_snapshots_and_prunes()
+    public async Task CollectMetricsOnceAsync_appends_two_snapshots_per_broker_and_prunes()
     {
         var metrics = new RecordingMetricStore();
+        var brokerId = Guid.NewGuid();
+        var broker = new BrokerProfile
+        {
+            Id = brokerId,
+            Name = "Test",
+            AgentUrl = "http://127.0.0.1:5100/",
+            ApiKey = "k",
+            RegisteredAt = DateTimeOffset.UtcNow,
+            Approved = true,
+        };
+
         var registry = Substitute.For<IBrokerRegistry>();
-        registry.GetDefaultLocalAsync(Arg.Any<CancellationToken>())
-            .Returns(new BrokerProfile
-            {
-                Id = BrokerConstants.DefaultLocalBrokerId,
-                Name = "Local",
-                UseLocalServices = true,
-                RegisteredAt = DateTimeOffset.UtcNow,
-                Approved = true,
-            });
+        registry.ListAsync(Arg.Any<CancellationToken>())
+            .Returns(new[] { broker });
+
+        var gateway = Substitute.For<IBrokerGateway>();
+        gateway.GetStatsAsync(Arg.Any<CancellationToken>())
+            .Returns(new BrokerStats { MessagesPerSecond = 3.5, ConnectedClients = 7 });
+
+        var factory = Substitute.For<IBrokerGatewayFactory>();
+        factory.Create(Arg.Any<BrokerProfile>()).Returns(gateway);
 
         var services = new ServiceCollection();
         services.AddSingleton(metrics);
         services.AddScoped<IMetricStore>(_ => metrics);
         services.AddScoped<IBrokerRegistry>(_ => registry);
+        services.AddScoped<IBrokerGatewayFactory>(_ => factory);
         services.AddScoped<IAuditLog>(_ => Substitute.For<IAuditLog>());
         using var sp = services.BuildServiceProvider();
         var scopeFactory = sp.GetRequiredService<IServiceScopeFactory>();
 
-        var stats = Substitute.For<IBrokerStatsProvider>();
-        stats.GetCurrent().Returns(new BrokerStats { MessagesPerSecond = 3.5, ConnectedClients = 7 });
-
         var options = new MqttTowerOptions { MetricsRetentionDays = 30 };
-        await MetricsCollectorHostedService.CollectMetricsOnceAsync(scopeFactory, stats, options, CancellationToken.None);
+        await MetricsCollectorHostedService.CollectMetricsOnceAsync(scopeFactory, options, CancellationToken.None);
 
         metrics.Appended.Should().HaveCount(2);
+        metrics.Appended[0].BrokerId.Should().Be(brokerId);
         metrics.Appended[0].Name.Should().Be("messagesPerSecond");
         metrics.Appended[0].Value.Should().Be(3.5);
         metrics.Appended[1].Name.Should().Be("connectedClients");

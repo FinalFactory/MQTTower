@@ -11,19 +11,16 @@ namespace MQTTower.Infrastructure.Hosting;
 public sealed class MetricsCollectorHostedService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly IBrokerStatsProvider _stats;
-    private readonly MqttTowerOptions _options;
+    private readonly IOptions<MqttTowerOptions> _options;
     private readonly ILogger<MetricsCollectorHostedService> _logger;
 
     public MetricsCollectorHostedService(
         IServiceScopeFactory scopeFactory,
-        IBrokerStatsProvider stats,
         IOptions<MqttTowerOptions> options,
         ILogger<MetricsCollectorHostedService> logger)
     {
         _scopeFactory = scopeFactory;
-        _stats = stats;
-        _options = options.Value;
+        _options = options;
         _logger = logger;
     }
 
@@ -33,7 +30,7 @@ public sealed class MetricsCollectorHostedService : BackgroundService
         {
             try
             {
-                await CollectMetricsOnceAsync(_scopeFactory, _stats, _options, stoppingToken).ConfigureAwait(false);
+                await CollectMetricsOnceAsync(_scopeFactory, _options.Value, stoppingToken).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -47,7 +44,6 @@ public sealed class MetricsCollectorHostedService : BackgroundService
     /// <summary>One collection + prune cycle; used by <see cref="ExecuteAsync"/> and unit tests.</summary>
     internal static async Task CollectMetricsOnceAsync(
         IServiceScopeFactory scopeFactory,
-        IBrokerStatsProvider stats,
         MqttTowerOptions options,
         CancellationToken cancellationToken)
     {
@@ -55,24 +51,41 @@ public sealed class MetricsCollectorHostedService : BackgroundService
         var metrics = scope.ServiceProvider.GetRequiredService<IMetricStore>();
         var registry = scope.ServiceProvider.GetRequiredService<IBrokerRegistry>();
         var audit = scope.ServiceProvider.GetRequiredService<IAuditLog>();
-        var local = await registry.GetDefaultLocalAsync(cancellationToken).ConfigureAwait(false);
-        var brokerId = local?.Id;
-        var s = stats.GetCurrent();
-        await metrics.AppendAsync(new MetricSnapshot
-        {
-            BrokerId = brokerId,
-            CapturedAt = DateTimeOffset.UtcNow,
-            Name = "messagesPerSecond",
-            Value = s.MessagesPerSecond,
-        }, cancellationToken).ConfigureAwait(false);
+        var factory = scope.ServiceProvider.GetRequiredService<IBrokerGatewayFactory>();
 
-        await metrics.AppendAsync(new MetricSnapshot
+        var brokers = await registry.ListAsync(cancellationToken).ConfigureAwait(false);
+        foreach (var b in brokers.Where(x => x.Approved && !string.IsNullOrWhiteSpace(x.AgentUrl)))
         {
-            BrokerId = brokerId,
-            CapturedAt = DateTimeOffset.UtcNow,
-            Name = "connectedClients",
-            Value = s.ConnectedClients,
-        }, cancellationToken).ConfigureAwait(false);
+            IBrokerGateway? gw = null;
+            try
+            {
+                gw = factory.Create(b);
+                var s = await gw.GetStatsAsync(cancellationToken).ConfigureAwait(false);
+                await metrics.AppendAsync(new MetricSnapshot
+                {
+                    BrokerId = b.Id,
+                    CapturedAt = DateTimeOffset.UtcNow,
+                    Name = "messagesPerSecond",
+                    Value = s.MessagesPerSecond,
+                }, cancellationToken).ConfigureAwait(false);
+
+                await metrics.AppendAsync(new MetricSnapshot
+                {
+                    BrokerId = b.Id,
+                    CapturedAt = DateTimeOffset.UtcNow,
+                    Name = "connectedClients",
+                    Value = s.ConnectedClients,
+                }, cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                /* ignore per-broker failures */
+            }
+            finally
+            {
+                (gw as IDisposable)?.Dispose();
+            }
+        }
 
         var cutoff = DateTimeOffset.UtcNow.AddDays(-options.MetricsRetentionDays);
         await metrics.PruneOlderThanAsync(cutoff, cancellationToken).ConfigureAwait(false);

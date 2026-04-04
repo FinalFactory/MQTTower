@@ -89,12 +89,9 @@ dotnet run --project src/MQTTower.Agent
 | `MQTTOWER_ADMIN_USER` | Initial admin username | `admin` |
 | `MQTTOWER_ADMIN_PASS` | Initial admin password | *(generated on LXC install)* |
 | `ConnectionStrings__Default` | SQLite connection string | `Data Source=mqttower.db` |
-| `MQTTower__BrokerHost` | MQTT broker hostname (for the dashboard's own MQTT client) | `localhost` |
-| `MQTTower__BrokerPort` | MQTT broker port | `1883` |
-| `MQTTower__BrokerUsername` | MQTT login (DynSec admin user; required when the broker disables anonymous access) | — |
-| `MQTTower__BrokerPassword` | MQTT password | — |
 | `MQTTower__LocalAgentUrl` | Co-located agent HTTP URL (full-stack / Docker; seeds the Local broker row) | — |
 | `MQTTower__LocalAgentApiKey` | API key for that agent (matches `Agent__ApiKey`) | — |
+| `MQTTower__WatcherNotifySecret` | Shared secret for watcher notifications from agents (`POST /api/watcher-notify`) | — |
 | `MQTTower__RegistrationSecret` | Shared secret for agent registration | *(empty — only one-time tokens accepted)* |
 | `ASPNETCORE_URLS` | Listen address | `http://+:8080` |
 
@@ -106,9 +103,10 @@ dotnet run --project src/MQTTower.Agent
 | `Agent__DashboardUrl` | Dashboard base URL for auto-registration | — |
 | `Agent__RegistrationToken` | Registration secret or one-time token | — |
 | `Agent__HttpPort` | Agent HTTP listen port | `5080` |
+| `Agent__WatcherNotifySecret` | Shared secret for watcher callbacks to the dashboard (must match `MQTTower__WatcherNotifySecret`) | — |
 | `MQTTower__MosquittoConfigPath` | Path to `mosquitto.conf` the agent manages | `/etc/mosquitto/mosquitto.conf` |
 | `MQTTower__MosquittoLogPath` | Path to Mosquitto log file | `/var/log/mosquitto/mosquitto.log` |
-| `MQTTower__BrokerUsername` | MQTT login (same DynSec admin user as the dashboard) | — |
+| `MQTTower__BrokerUsername` | MQTT login (DynSec admin user for the agent) | — |
 | `MQTTower__BrokerPassword` | MQTT password | — |
 
 ### mTLS (optional)

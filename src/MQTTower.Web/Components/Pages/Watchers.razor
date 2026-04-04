@@ -17,13 +17,6 @@
     </AuthorizeView>
 </MudStack>
 
-@if (BrokerCtx.Selected is not null && !BrokerCtx.Selected.UseLocalServices)
-{
-    <MudAlert Severity="Severity.Info" Class="mb-4" Dense="true">
-        Watchers for this broker are evaluated on the agent host, not on this dashboard server.
-    </MudAlert>
-}
-
 <MudTable Items="@_items" Hover="true" Dense="true" Loading="_loading">
     <HeaderContent>
         @if (BrokerCtx.Selected is null)

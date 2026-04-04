@@ -9,11 +9,9 @@ using MQTTower.Core.Interfaces;
 using MQTTower.Core.Models;
 using MQTTower.Infrastructure.Automation;
 using MQTTower.Infrastructure.Backup;
-using MQTTower.Infrastructure.Config;
 using MQTTower.Infrastructure.Data;
 using MQTTower.Infrastructure.Hosting;
 using MQTTower.Infrastructure.Monitoring;
-using MQTTower.Infrastructure.Mqtt;
 using MQTTower.Infrastructure.Notifications;
 using MQTTower.Infrastructure.Options;
 using MQTTower.Infrastructure.Agents;
@@ -38,22 +36,11 @@ builder.Services.AddDbContext<AppDbContext>((sp, o) =>
     o.UseSqlite(cs);
 });
 
-builder.Services.AddSingleton<MqttConnectionService>();
-builder.Services.AddSingleton<IMqttPublisher>(sp => sp.GetRequiredService<MqttConnectionService>());
-builder.Services.AddSingleton<IMqttSubscriber>(sp => sp.GetRequiredService<MqttConnectionService>());
-builder.Services.AddSingleton<BrokerStatsCollector>();
-builder.Services.AddSingleton<IBrokerStatsProvider>(sp => sp.GetRequiredService<BrokerStatsCollector>());
-builder.Services.AddSingleton<TopicExplorerService>();
-builder.Services.AddSingleton<ITopicExplorerService>(sp => sp.GetRequiredService<TopicExplorerService>());
-
-builder.Services.AddSingleton<IDynSecService, DynSecService>();
 builder.Services.AddScoped<IMetricStore, EfMetricStore>();
 builder.Services.AddScoped<IAuditLog, EfAuditLog>();
 builder.Services.AddScoped<IDeviceRegistry, EfDeviceRegistry>();
 builder.Services.AddScoped<IDeviceStateTracker, EfDeviceStateTracker>();
 builder.Services.AddScoped<IUserService, EfUserService>();
-builder.Services.AddScoped<IBrokerConfigStore, FileBrokerConfigStore>();
-builder.Services.AddScoped<IBrokerLogReader, BrokerLogReader>();
 builder.Services.AddScoped<IBrokerRegistry, EfBrokerRegistry>();
 builder.Services.AddScoped<IRegistrationTokenService, EfRegistrationTokenService>();
 builder.Services.AddSingleton<AgentGatewayFactory>();
@@ -69,16 +56,12 @@ builder.Services.AddSingleton<INotificationChannel, WebhookNotifier>();
 builder.Services.AddSingleton<INotificationChannel, SmtpNotifier>();
 
 builder.Services.AddScoped<INotificationRouter, NotificationRouter>();
+builder.Services.AddScoped<IWatcherService, DashboardWatcherService>();
 
 builder.Services.AddSingleton<CronSchedulerService>();
 builder.Services.AddSingleton<ISchedulerService>(sp => sp.GetRequiredService<CronSchedulerService>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<CronSchedulerService>());
 
-builder.Services.AddSingleton<WatcherEngine>();
-builder.Services.AddSingleton<IWatcherService>(sp => sp.GetRequiredService<WatcherEngine>());
-builder.Services.AddHostedService<WatcherStartupHostedService>();
-
-builder.Services.AddHostedService<MqttStartupHostedService>();
 builder.Services.AddHostedService<MetricsCollectorHostedService>();
 builder.Services.AddHostedService<DeviceMonitorHostedService>();
 builder.Services.AddHostedService<AdminSeedHostedService>();

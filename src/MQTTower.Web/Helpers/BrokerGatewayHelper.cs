@@ -11,7 +11,7 @@ public static class BrokerGatewayHelper
         Func<IBrokerGateway, Task<T>> action,
         T defaultValue = default!)
     {
-        if (broker is null)
+        if (broker is null || string.IsNullOrWhiteSpace(broker.AgentUrl))
         {
             return defaultValue;
         }
@@ -32,7 +32,7 @@ public static class BrokerGatewayHelper
         BrokerProfile? broker,
         Func<IBrokerGateway, Task> action)
     {
-        if (broker is null)
+        if (broker is null || string.IsNullOrWhiteSpace(broker.AgentUrl))
         {
             return;
         }

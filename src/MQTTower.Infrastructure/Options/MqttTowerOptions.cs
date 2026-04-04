@@ -4,10 +4,10 @@ public sealed class MqttTowerOptions
 {
     public const string SectionName = "MQTTower";
 
-    /// <summary>MQTT broker host for the <b>dashboard</b> in-process client (local broker profile). Ignored by MQTTower.Agent (agent always uses localhost; port from mosquitto.conf).</summary>
+    /// <summary>MQTT broker host for the co-located agent process. Post-configured to localhost.</summary>
     public string BrokerHost { get; set; } = "127.0.0.1";
 
-    /// <summary>MQTT broker port for the <b>dashboard</b> in-process client (local broker profile). Ignored by MQTTower.Agent (port parsed from <see cref="MosquittoConfigPath"/>).</summary>
+    /// <summary>MQTT broker port for the co-located agent (parsed from <see cref="MosquittoConfigPath"/> when present).</summary>
     public int BrokerPort { get; set; } = 1883;
     public string? BrokerUsername { get; set; }
     public string? BrokerPassword { get; set; }
@@ -41,6 +41,9 @@ public sealed class MqttTowerOptions
 
     /// <summary>Shared secret agents must send when calling <c>/api/agents/register</c>.</summary>
     public string? RegistrationSecret { get; set; }
+
+    /// <summary>Shared secret for <c>POST /api/watcher-notify</c> from agents (must match <c>Agent:WatcherNotifySecret</c>).</summary>
+    public string? WatcherNotifySecret { get; set; }
 
     /// <summary>Optional client certificate path for mTLS to agents.</summary>
     public string? AgentClientCertPath { get; set; }

@@ -3,8 +3,6 @@ using System.Net.Mime;
 using System.Net.Security;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MQTTower.Core.Interfaces;
@@ -15,27 +13,20 @@ namespace MQTTower.Infrastructure.Agents;
 
 public sealed class AgentGatewayFactory : IBrokerGatewayFactory
 {
-    private readonly IServiceProvider _services;
     private readonly MqttTowerOptions _towerOptions;
     private readonly ILogger<AgentGatewayFactory> _logger;
 
-    public AgentGatewayFactory(IServiceProvider services, IOptions<MqttTowerOptions> towerOptions, ILogger<AgentGatewayFactory> logger)
+    public AgentGatewayFactory(IOptions<MqttTowerOptions> towerOptions, ILogger<AgentGatewayFactory> logger)
     {
-        _services = services;
         _towerOptions = towerOptions.Value;
         _logger = logger;
     }
 
     public IBrokerGateway Create(BrokerProfile broker)
     {
-        if (broker.UseLocalServices)
-        {
-            return ActivatorUtilities.CreateInstance<LocalBrokerGateway>(_services, broker.Id);
-        }
-
         if (string.IsNullOrWhiteSpace(broker.AgentUrl))
         {
-            throw new InvalidOperationException("Agent URL is required for remote brokers.");
+            throw new InvalidOperationException("Agent URL is required. Configure the co-located agent URL for the local broker.");
         }
 
         var baseUri = new Uri(broker.AgentUrl.TrimEnd('/') + "/", UriKind.Absolute);
