@@ -328,9 +328,28 @@ mqttower_build_container() {
   msg_ok "Customized LXC Container"
 
   # --- Run MQTTower install script (the ONLY difference vs framework build_container) ---
-  export CONTAINER_INSTALLING=true
-  lxc-attach -n "$CTID" -- bash -c "$(curl -fsSL "$MQTTOWER_INSTALL_URL")"
-  unset CONTAINER_INSTALLING
+  # Use pct exec (not lxc-attach): unprivileged LXC often returns EPERM from lxc-attach, and
+  # pct exec does not inherit the host env — pass MQTTOWER_* explicitly (collect_mqttower_env).
+  pct exec "$CTID" -- env \
+    CONTAINER_INSTALLING=true \
+    "MQTTOWER_DEPLOY_MODE=${DEPLOY_MODE}" \
+    "MQTTOWER_CT_URL=${MQTTOWER_CT_URL:-${MQTTOWER_DEPLOY_BASE}/ct/mqttower.sh}" \
+    "MQTTOWER_DASHBOARD_URL=${MQTTOWER_DASHBOARD_URL:-}" \
+    "MQTTOWER_REG_SECRET=${MQTTOWER_REG_SECRET:-}" \
+    "MQTTOWER_API_KEY=${MQTTOWER_API_KEY:-}" \
+    "MQTTOWER_MQTT_PORT=${MQTTOWER_MQTT_PORT:-}" \
+    "MQTTOWER_AGENT_PORT=${MQTTOWER_AGENT_PORT:-}" \
+    "MQTTOWER_PUBLIC_AGENT_URL=${MQTTOWER_PUBLIC_AGENT_URL:-}" \
+    "MQTTOWER_MQTT_USER=${MQTTOWER_MQTT_USER:-}" \
+    "MQTTOWER_MQTT_PASS=${MQTTOWER_MQTT_PASS:-}" \
+    "MQTTOWER_ADMIN_USER=${MQTTOWER_ADMIN_USER:-}" \
+    "MQTTOWER_ADMIN_PASS=${MQTTOWER_ADMIN_PASS:-}" \
+    "MQTTOWER_BROKER_HOST=${MQTTOWER_BROKER_HOST:-}" \
+    "MQTTOWER_BROKER_PORT=${MQTTOWER_BROKER_PORT:-}" \
+    "MQTTOWER_WEB_PORT=${MQTTOWER_WEB_PORT:-}" \
+    "MQTTOWER_LOCAL_AGENT_URL=${MQTTOWER_LOCAL_AGENT_URL:-}" \
+    "MQTTOWER_LOCAL_AGENT_API_KEY=${MQTTOWER_LOCAL_AGENT_API_KEY:-}" \
+    bash -c "$(curl -fsSL "$MQTTOWER_INSTALL_URL")"
 }
 
 pick_deploy_mode
