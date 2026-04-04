@@ -57,8 +57,9 @@ install_dotnet_runtime() {
     rm -f /tmp/packages-microsoft-prod.deb
   fi
   $STD apt-get update -y
-  $STD apt-get install -y dotnet-runtime-9.0
-  msg_ok "Installed .NET runtime"
+  # Agent and Web need Microsoft.AspNetCore.App (aspnetcore-runtime), not only dotnet-runtime.
+  $STD apt-get install -y aspnetcore-runtime-9.0
+  msg_ok "Installed ASP.NET Core runtime"
 }
 
 dynsec_plugin_path() {
