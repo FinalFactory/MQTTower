@@ -78,6 +78,14 @@ rand_hex() {
   openssl rand -hex 16 2>/dev/null || head -c 16 /dev/urandom | xxd -p
 }
 
+# msg_info() starts a background spinner on stderr; whiptail also draws on stderr.
+# Without stopping the spinner and clearing the line, dialogs render corrupted.
+mqttower_whiptail() {
+  stop_spinner
+  clear_line
+  whiptail "$@" 3>&1 1>&2 2>&3
+}
+
 pick_deploy_mode() {
   local m="${MQTTOWER_DEPLOY_MODE:-}"
   m="${m,,}"
@@ -89,12 +97,12 @@ pick_deploy_mode() {
       ;;
   esac
 
-  DEPLOY_MODE="$(whiptail --title "${APP}" --radiolist \
+  DEPLOY_MODE="$(mqttower_whiptail --title "${APP}" --radiolist \
     "What to install in the new LXC?" 18 70 3 \
     broker    "Mosquitto + Agent (remote dashboard)" ON \
     dashboard "Dashboard only (remote broker)"       OFF \
     fullstack "Full stack: Mosquitto + Agent + Dashboard" OFF \
-    3>&1 1>&2 2>&3)" || exit 1
+    )" || exit 1
   [[ -n "$DEPLOY_MODE" ]] || { msg_error "No mode selected."; exit 1; }
 }
 
@@ -114,15 +122,15 @@ collect_mqttower_env() {
       fi
       export MQTTOWER_MQTT_PASS
       if [[ -z "${MQTTOWER_DASHBOARD_URL}" ]]; then
-        MQTTOWER_DASHBOARD_URL="$(whiptail --title "Dashboard URL" --inputbox \
+        MQTTOWER_DASHBOARD_URL="$(mqttower_whiptail --title "Dashboard URL" --inputbox \
           "MQTTower dashboard base URL (e.g. http://192.168.1.10:8080)" 10 70 "" \
-          3>&1 1>&2 2>&3)" || exit 1
+          )" || exit 1
       fi
       [[ -n "${MQTTOWER_DASHBOARD_URL}" ]] || { msg_error "Dashboard URL is required."; exit 1; }
       if [[ -z "${MQTTOWER_REG_SECRET}" ]]; then
-        MQTTOWER_REG_SECRET="$(whiptail --title "Registration Secret" --inputbox \
+        MQTTOWER_REG_SECRET="$(mqttower_whiptail --title "Registration Secret" --inputbox \
           "Registration secret (MQTTower:RegistrationSecret)" 10 70 "" \
-          3>&1 1>&2 2>&3)" || exit 1
+          )" || exit 1
       fi
       if [[ -z "${MQTTOWER_API_KEY}" ]]; then
         MQTTOWER_API_KEY="$(rand_hex)"
@@ -143,15 +151,15 @@ collect_mqttower_env() {
       fi
       export MQTTOWER_ADMIN_PASS
       if [[ -z "${MQTTOWER_REG_SECRET}" ]]; then
-        MQTTOWER_REG_SECRET="$(whiptail --title "Registration Secret" --inputbox \
+        MQTTOWER_REG_SECRET="$(mqttower_whiptail --title "Registration Secret" --inputbox \
           "Registration secret (same on dashboard and agents)" 10 70 "" \
-          3>&1 1>&2 2>&3)" || exit 1
+          )" || exit 1
       fi
       [[ -n "${MQTTOWER_REG_SECRET}" ]] || { msg_error "Registration secret is required."; exit 1; }
       if [[ -z "${MQTTOWER_BROKER_HOST}" ]]; then
-        MQTTOWER_BROKER_HOST="$(whiptail --title "Broker Host" --inputbox \
+        MQTTOWER_BROKER_HOST="$(mqttower_whiptail --title "Broker Host" --inputbox \
           "MQTT broker host (IP of broker LXC)" 10 70 "" \
-          3>&1 1>&2 2>&3)" || exit 1
+          )" || exit 1
       fi
       [[ -n "${MQTTOWER_BROKER_HOST}" ]] || { msg_error "Broker host is required."; exit 1; }
       if [[ -z "${MQTTOWER_MQTT_PASS:-}" ]]; then
@@ -176,9 +184,9 @@ collect_mqttower_env() {
       fi
       export MQTTOWER_ADMIN_PASS
       if [[ -z "${MQTTOWER_REG_SECRET}" ]]; then
-        MQTTOWER_REG_SECRET="$(whiptail --title "Registration Secret" --inputbox \
+        MQTTOWER_REG_SECRET="$(mqttower_whiptail --title "Registration Secret" --inputbox \
           "Registration secret (dashboard and agents)" 10 70 "" \
-          3>&1 1>&2 2>&3)" || exit 1
+          )" || exit 1
       fi
       [[ -n "${MQTTOWER_REG_SECRET}" ]] || { msg_error "Registration secret is required."; exit 1; }
       MQTTOWER_BROKER_HOST="127.0.0.1"
