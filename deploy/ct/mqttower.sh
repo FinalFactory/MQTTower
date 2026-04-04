@@ -305,18 +305,22 @@ mqttower_build_container() {
   done
 
   msg_info "Waiting for network in LXC container"
-  local ip_in_lxc=""
-  for i in {1..20}; do
+  local ip_in_lxc="" wait_secs=0
+  while true; do
     ip_in_lxc=$(pct exec "$CTID" -- ip -4 addr show dev eth0 2>/dev/null | awk '/inet / {print $2}' | cut -d/ -f1)
     [[ -z "$ip_in_lxc" ]] && ip_in_lxc=$(pct exec "$CTID" -- ip -6 addr show dev eth0 scope global 2>/dev/null | awk '/inet6 / {print $2}' | cut -d/ -f1 | head -n1)
     [[ -n "$ip_in_lxc" ]] && break
     sleep 1
+    wait_secs=$((wait_secs + 1))
+    if ((wait_secs % 20 == 0)); then
+      msg_warn "No IP on eth0 after ${wait_secs}s — still waiting (Ctrl+C to abort)"
+    fi
   done
-  [[ -n "$ip_in_lxc" ]] && msg_ok "Network in LXC is reachable" || msg_warn "No IP assigned after 20s — continuing"
+  msg_ok "Network in LXC is reachable (${ip_in_lxc})"
 
   # --- Base packages ---
   msg_info "Customizing LXC Container"
-  sleep 3
+  sleep 2
   pct exec "$CTID" -- bash -c "apt-get update 2>&1 && apt-get install -y sudo curl mc gnupg2 jq 2>&1" >>"$BUILD_LOG" 2>&1 || {
     msg_error "Failed to install base packages"
     exit 116
