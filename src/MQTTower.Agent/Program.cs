@@ -188,7 +188,10 @@ api.MapPost("/mqtt/publish", async (PublishBody body, IMqttPublisher pub, Cancel
 });
 
 api.MapGet("/dynsec/clients", async (IDynSecService d, CancellationToken ct) =>
-    Results.Ok(await d.ListClientsAsync(ct).ConfigureAwait(false)));
+{
+    var list = await d.ListClientsAsync(ct).ConfigureAwait(false);
+    return Results.Ok(list.ToList());
+});
 
 api.MapPost("/dynsec/clients", async (CreateClientBody b, IDynSecService d, CancellationToken ct) =>
 {
@@ -209,7 +212,10 @@ api.MapPut("/dynsec/clients/{username}/enabled", async (string username, SetEnab
 });
 
 api.MapGet("/dynsec/roles", async (IDynSecService d, CancellationToken ct) =>
-    Results.Ok(await d.ListRolesAsync(ct).ConfigureAwait(false)));
+{
+    var list = await d.ListRolesAsync(ct).ConfigureAwait(false);
+    return Results.Ok(list.ToList());
+});
 
 api.MapPost("/dynsec/roles", async (CreateRoleBody b, IDynSecService d, CancellationToken ct) =>
 {
@@ -225,7 +231,10 @@ api.MapDelete("/dynsec/roles/{name}", async (string name, IDynSecService d, Canc
 });
 
 api.MapGet("/dynsec/groups", async (IDynSecService d, CancellationToken ct) =>
-    Results.Ok(await d.ListGroupsAsync(ct).ConfigureAwait(false)));
+{
+    var list = await d.ListGroupsAsync(ct).ConfigureAwait(false);
+    return Results.Ok(list.ToList());
+});
 
 api.MapPost("/dynsec/groups", async (CreateGroupBody b, IDynSecService d, CancellationToken ct) =>
 {
@@ -253,7 +262,10 @@ api.MapPut("/config", async (HttpRequest req, IBrokerConfigStore s, Cancellation
 });
 
 api.MapGet("/logs", async (IBrokerLogReader r, int lines, CancellationToken ct) =>
-    Results.Ok(await r.GetRecentLinesAsync(lines <= 0 ? 500 : lines, ct).ConfigureAwait(false)));
+{
+    var linesList = await r.GetRecentLinesAsync(lines <= 0 ? 500 : lines, ct).ConfigureAwait(false);
+    return Results.Ok(linesList.ToList());
+});
 
 api.MapGet("/topics", (ITopicExplorerService t) => Results.Ok(t.GetRoots()));
 
