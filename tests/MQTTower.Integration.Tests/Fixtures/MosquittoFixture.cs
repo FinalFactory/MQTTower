@@ -88,6 +88,7 @@ public sealed class MosquittoFixture : IAsyncLifetime
         // See https://mosquitto.org/documentation/dynamic-security/ (Environment variable).
         // Idempotent init: do not re-run dynsec init on container restart or it would overwrite dynamic-security.json.
         var initAndRun =
+            "umask 000 && " +
             "mkdir -p /mosquitto/data /mosquitto/log && " +
             "if [ ! -f /mosquitto/data/dynamic-security.json ]; then " +
             "mosquitto_ctrl dynsec init /mosquitto/data/dynamic-security.json " + AdminUsername + "; fi && " +
