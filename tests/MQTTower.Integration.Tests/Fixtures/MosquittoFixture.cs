@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Linq;
 using System.Net.Sockets;
 using System.Text.Json;
@@ -50,12 +51,24 @@ public sealed class MosquittoFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        // GitHub Actions + Docker: bind mounts under /tmp often never expose files written in the container on the host.
-        // Use GITHUB_WORKSPACE when set so mounts use the checked-out filesystem (matches local dev behavior).
         _hostRoot = CreateHostRootDirectory();
-        Directory.CreateDirectory(Path.Combine(_hostRoot, "config"));
-        Directory.CreateDirectory(Path.Combine(_hostRoot, "data"));
-        Directory.CreateDirectory(Path.Combine(_hostRoot, "log"));
+        var configDir = Path.Combine(_hostRoot, "config");
+        var dataDir = Path.Combine(_hostRoot, "data");
+        var logDir = Path.Combine(_hostRoot, "log");
+        Directory.CreateDirectory(configDir);
+        Directory.CreateDirectory(dataDir);
+        Directory.CreateDirectory(logDir);
+
+        // eclipse-mosquitto runs as UID 1883 (mosquitto). On Linux CI, bind-mounted host dirs
+        // are owned by the runner user — mosquitto_ctrl and mosquitto cannot write to them.
+        if (!OperatingSystem.IsWindows())
+        {
+            foreach (var dir in new[] { configDir, dataDir, logDir })
+            {
+                using var p = Process.Start(new ProcessStartInfo("chmod", $"777 {dir}") { RedirectStandardOutput = true });
+                p?.WaitForExit(5000);
+            }
+        }
 
         var conf = """
             per_listener_settings false
@@ -323,17 +336,24 @@ public sealed class MosquittoFixture : IAsyncLifetime
         var start = DateTime.UtcNow;
         while (DateTime.UtcNow - start < timeout)
         {
-            var r = await _container.ExecAsync(new[] { "/bin/sh", "-c", $"test -f {containerPath}" }).ConfigureAwait(false);
-            if (r.ExitCode == 0)
+            var cat = await _container.ExecAsync(new[] { "/bin/sh", "-c", $"cat {containerPath}" }).ConfigureAwait(false);
+            if (cat.ExitCode == 0 && cat.Stdout.Contains("clients"))
             {
                 return;
             }
 
-            await Task.Delay(200).ConfigureAwait(false);
+            await Task.Delay(500).ConfigureAwait(false);
         }
 
+        var ls = await _container.ExecAsync(new[] { "/bin/sh", "-c", "ls -la /mosquitto/data/ 2>&1" }).ConfigureAwait(false);
+        var id = await _container.ExecAsync(new[] { "/bin/sh", "-c", "id 2>&1" }).ConfigureAwait(false);
+        var (stdout, stderr) = await _container.GetLogsAsync().ConfigureAwait(false);
+        var logTail = stderr.Length > 2000 ? stderr[^2000..] : stderr;
         throw new InvalidOperationException(
-            $"Timed out waiting for {containerPath} in the Mosquitto container (dynsec init may have failed).");
+            $"Timed out waiting for {containerPath}.\n" +
+            $"ls /mosquitto/data/: {ls.Stdout}\n" +
+            $"id: {id.Stdout}\n" +
+            $"Container stderr (tail): {logTail}");
     }
 
     /// <summary>Reads DynSec JSON from the host bind mount when present; otherwise from the container (CI bind mount quirks).</summary>
