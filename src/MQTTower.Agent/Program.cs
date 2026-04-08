@@ -155,9 +155,53 @@ app.UseRateLimiter();
 
 var startTime = Process.GetCurrentProcess().StartTime;
 
-static string AgentVersion() =>
-    Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
-    ?? Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0";
+static string AgentVersion()
+{
+    var asm = typeof(Program).Assembly;
+    var informational = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+    if (!string.IsNullOrWhiteSpace(informational))
+    {
+        return informational;
+    }
+
+    var fileAttr = asm.GetCustomAttribute<AssemblyFileVersionAttribute>()?.Version;
+    if (!string.IsNullOrWhiteSpace(fileAttr))
+    {
+        return fileAttr;
+    }
+
+    try
+    {
+        return asm.GetName().Version?.ToString() ?? "0.0";
+    }
+    catch (Exception)
+    {
+        // GetName() validates CultureInfo from manifest; corrupt or unusual metadata can throw CultureNotFoundException.
+    }
+
+    try
+    {
+        var loc = asm.Location;
+        if (!string.IsNullOrEmpty(loc) && File.Exists(loc))
+        {
+            var fvi = FileVersionInfo.GetVersionInfo(loc);
+            if (!string.IsNullOrWhiteSpace(fvi.ProductVersion))
+            {
+                return fvi.ProductVersion;
+            }
+
+            if (!string.IsNullOrWhiteSpace(fvi.FileVersion))
+            {
+                return fvi.FileVersion;
+            }
+        }
+    }
+    catch (Exception)
+    {
+    }
+
+    return "0.0";
+}
 
 app.MapGet("/health", (MqttConnectionService m, ILoggerFactory loggerFactory) =>
 {
@@ -241,7 +285,7 @@ api.MapGet("/dynsec/roles", async (IDynSecService d, CancellationToken ct) =>
 
 api.MapPost("/dynsec/roles", async (CreateRoleBody b, IDynSecService d, CancellationToken ct) =>
 {
-    var acls = b.Acls is { Count: > 0 } ? b.Acls : Array.Empty<AclEntry>();
+    var acls = b.Acls is { Count: > 0 } ? b.Acls! : new List<AclEntry>();
     await d.CreateRoleAsync(b.Name, b.Description, acls, ct).ConfigureAwait(false);
     return Results.Ok();
 });
@@ -260,8 +304,8 @@ api.MapGet("/dynsec/groups", async (IDynSecService d, CancellationToken ct) =>
 
 api.MapPost("/dynsec/groups", async (CreateGroupBody b, IDynSecService d, CancellationToken ct) =>
 {
-    var roles = b.RoleNames is { Count: > 0 } ? b.RoleNames : Array.Empty<string>();
-    var clients = b.ClientUsernames is { Count: > 0 } ? b.ClientUsernames : Array.Empty<string>();
+    var roles = b.RoleNames is { Count: > 0 } ? b.RoleNames! : new List<string>();
+    var clients = b.ClientUsernames is { Count: > 0 } ? b.ClientUsernames! : new List<string>();
     await d.CreateGroupAsync(b.Name, b.Description, roles, clients, ct).ConfigureAwait(false);
     return Results.Ok();
 });
@@ -428,9 +472,43 @@ finally
     Log.CloseAndFlush();
 }
 
-internal sealed record SetApiKeyBody(string ApiKey);
-internal sealed record PublishBody(string Topic, string? Payload, int Qos, bool Retain);
-internal sealed record CreateClientBody(string Username, string Password, List<string>? Roles, List<string>? Groups);
-internal sealed record SetEnabledBody(bool Enabled);
-internal sealed record CreateRoleBody(string Name, string? Description, IReadOnlyList<AclEntry>? Acls);
-internal sealed record CreateGroupBody(string Name, string? Description, IReadOnlyList<string>? RoleNames, IReadOnlyList<string>? ClientUsernames);
+internal sealed class SetApiKeyBody
+{
+    public string ApiKey { get; set; } = string.Empty;
+}
+
+internal sealed class PublishBody
+{
+    public string Topic { get; set; } = string.Empty;
+    public string? Payload { get; set; }
+    public int Qos { get; set; }
+    public bool Retain { get; set; }
+}
+
+internal sealed class CreateClientBody
+{
+    public string Username { get; set; } = string.Empty;
+    public string Password { get; set; } = string.Empty;
+    public List<string>? Roles { get; set; }
+    public List<string>? Groups { get; set; }
+}
+
+internal sealed class SetEnabledBody
+{
+    public bool Enabled { get; set; }
+}
+
+internal sealed class CreateRoleBody
+{
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public List<AclEntry>? Acls { get; set; }
+}
+
+internal sealed class CreateGroupBody
+{
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public List<string>? RoleNames { get; set; }
+    public List<string>? ClientUsernames { get; set; }
+}
