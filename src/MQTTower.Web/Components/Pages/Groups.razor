@@ -12,7 +12,7 @@
     <MudText Typo="Typo.h4">Groups</MudText>
     <AuthorizeView Roles="Admin">
         <Authorized>
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateAsync" Disabled="@(BrokerCtx.Selected is null)">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateAsync" Disabled="@(BrokerCtx.Selected is null || !BrokerGatewayHelper.CanUseGateway(BrokerCtx.Selected))">
                 Add group
             </MudButton>
         </Authorized>
@@ -25,6 +25,9 @@
 }
 else
 {
+    <BrokerAgentUnavailableBanner />
+    @if (BrokerGatewayHelper.CanUseGateway(BrokerCtx.Selected))
+    {
     <MudTable Items="@FilteredItems" Hover="true" Dense="true" Loading="_loading">
         <ToolBarContent>
             <MudTextField @bind-Value="_search" Placeholder="Search" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" />
@@ -44,6 +47,7 @@ else
             </MudTd>
         </RowTemplate>
     </MudTable>
+    }
 }
 
 @code {
@@ -74,6 +78,12 @@ else
     private async Task LoadAsync()
     {
         if (BrokerCtx.Selected is null)
+        {
+            _items = new List<MqttGroup>();
+            return;
+        }
+
+        if (!BrokerGatewayHelper.CanUseGateway(BrokerCtx.Selected))
         {
             _items = new List<MqttGroup>();
             return;

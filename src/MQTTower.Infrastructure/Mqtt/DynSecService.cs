@@ -108,7 +108,7 @@ public sealed class DynSecService : IDynSecService
             _pending.TryRemove(correlation, out _);
             if (ex is OperationCanceledException oce && !cancellationToken.IsCancellationRequested)
             {
-                _logger.LogDebug(
+                _logger.LogWarning(
                     oce,
                     "DynSec: no response within 15s (check Mosquitto, dynamic-security plugin, and MQTT subscription on {ControlTopic}).",
                     _options.ControlTopic);

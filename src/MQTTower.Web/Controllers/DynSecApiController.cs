@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MQTTower.Core.Interfaces;
 using MQTTower.Core.Models;
+using MQTTower.Web.Helpers;
 
 namespace MQTTower.Web.Controllers;
 
@@ -28,6 +29,11 @@ public sealed class DynSecApiController : ControllerBase
             return BadRequest(new { error = "brokerId required or no default broker" });
         }
 
+        if (BrokerGatewayHelper.GetAgentUnavailableMessage(broker) is { } unavailable)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = unavailable });
+        }
+
         var gw = _gatewayFactory.Create(broker);
         try
         {
@@ -49,6 +55,11 @@ public sealed class DynSecApiController : ControllerBase
             return BadRequest(new { error = "brokerId required or no default broker" });
         }
 
+        if (BrokerGatewayHelper.GetAgentUnavailableMessage(broker) is { } unavailableRoles)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = unavailableRoles });
+        }
+
         var gw = _gatewayFactory.Create(broker);
         try
         {
@@ -68,6 +79,11 @@ public sealed class DynSecApiController : ControllerBase
         if (broker is null)
         {
             return BadRequest(new { error = "brokerId required or no default broker" });
+        }
+
+        if (BrokerGatewayHelper.GetAgentUnavailableMessage(broker) is { } unavailableGroups)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = unavailableGroups });
         }
 
         var gw = _gatewayFactory.Create(broker);

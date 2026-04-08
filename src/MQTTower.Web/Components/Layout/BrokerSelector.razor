@@ -47,6 +47,14 @@
         }
 
         _selectedId = BrokerCtx.Selected?.Id;
+        if (BrokerCtx.Selected is not null)
+        {
+            var fresh = await Registry.GetAsync(BrokerCtx.Selected.Id).ConfigureAwait(false);
+            if (fresh is not null)
+            {
+                BrokerCtx.Select(fresh);
+            }
+        }
     }
 
     private async Task OnChangedAsync(Guid? id)

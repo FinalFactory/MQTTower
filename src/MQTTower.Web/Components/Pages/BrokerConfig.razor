@@ -13,9 +13,13 @@
 }
 else
 {
+    <BrokerAgentUnavailableBanner />
+    @if (BrokerGatewayHelper.CanUseGateway(BrokerCtx.Selected))
+    {
     <MudText Typo="Typo.h4">Broker Config</MudText>
     <MudTextField @bind-Value="_text" Lines="18" Variant="Variant.Outlined" Class="mt-4" />
     <MudButton Color="Color.Primary" Class="mt-2" OnClick="SaveAsync">Save</MudButton>
+    }
 }
 
 @code {
@@ -39,6 +43,12 @@ else
     private async Task LoadAsync()
     {
         if (BrokerCtx.Selected is null)
+        {
+            _text = string.Empty;
+            return;
+        }
+
+        if (!BrokerGatewayHelper.CanUseGateway(BrokerCtx.Selected))
         {
             _text = string.Empty;
             return;

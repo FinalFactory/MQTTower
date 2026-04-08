@@ -19,7 +19,11 @@
 }
 else
 {
+    <BrokerAgentUnavailableBanner />
+    @if (BrokerGatewayHelper.CanUseGateway(BrokerCtx.Selected))
+    {
     <TopicTreeBranch Nodes="@_roots" />
+    }
 }
 
 @code {
@@ -61,7 +65,7 @@ else
 
     private void StartLiveUpdates()
     {
-        if (BrokerCtx.Selected is null || string.IsNullOrWhiteSpace(BrokerCtx.Selected.AgentUrl))
+        if (BrokerCtx.Selected is null || string.IsNullOrWhiteSpace(BrokerCtx.Selected.AgentUrl) || !BrokerGatewayHelper.CanUseGateway(BrokerCtx.Selected))
         {
             return;
         }
@@ -145,6 +149,12 @@ else
     private async Task RefreshAsync()
     {
         if (BrokerCtx.Selected is null)
+        {
+            _roots = Array.Empty<TopicTreeNode>();
+            return;
+        }
+
+        if (!BrokerGatewayHelper.CanUseGateway(BrokerCtx.Selected))
         {
             _roots = Array.Empty<TopicTreeNode>();
             return;

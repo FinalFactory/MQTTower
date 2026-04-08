@@ -1,4 +1,5 @@
 using System.IO;
+using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
@@ -32,7 +33,7 @@ public sealed class AgentHttpClient : IBrokerGateway, IDisposable
     public async Task<BrokerStats> GetStatsAsync(CancellationToken cancellationToken = default)
     {
         var r = await _http.GetAsync("api/stats", cancellationToken).ConfigureAwait(false);
-        r.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
         return await r.Content.ReadFromJsonAsync<BrokerStats>(Json, cancellationToken).ConfigureAwait(false) ?? new BrokerStats();
     }
 
@@ -44,13 +45,13 @@ public sealed class AgentHttpClient : IBrokerGateway, IDisposable
             qos,
             retain);
         var r = await _http.PostAsJsonAsync("api/mqtt/publish", body, Json, cancellationToken).ConfigureAwait(false);
-        r.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<MqttClientInfo>> ListClientsAsync(CancellationToken cancellationToken = default)
     {
         var r = await _http.GetAsync("api/dynsec/clients", cancellationToken).ConfigureAwait(false);
-        r.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
         return await r.Content.ReadFromJsonAsync<List<MqttClientInfo>>(Json, cancellationToken).ConfigureAwait(false) ?? new List<MqttClientInfo>();
     }
 
@@ -58,13 +59,13 @@ public sealed class AgentHttpClient : IBrokerGateway, IDisposable
     {
         var body = new CreateClientDto(username, password, roles?.ToList(), groups?.ToList());
         var r = await _http.PostAsJsonAsync("api/dynsec/clients", body, Json, cancellationToken).ConfigureAwait(false);
-        r.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task DeleteClientAsync(string username, CancellationToken cancellationToken = default)
     {
         var r = await _http.DeleteAsync($"api/dynsec/clients/{Uri.EscapeDataString(username)}", cancellationToken).ConfigureAwait(false);
-        r.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task SetClientEnabledAsync(string username, bool enabled, CancellationToken cancellationToken = default)
@@ -74,13 +75,13 @@ public sealed class AgentHttpClient : IBrokerGateway, IDisposable
             new EnabledDto(enabled),
             Json,
             cancellationToken).ConfigureAwait(false);
-        r.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<MqttRole>> ListRolesAsync(CancellationToken cancellationToken = default)
     {
         var r = await _http.GetAsync("api/dynsec/roles", cancellationToken).ConfigureAwait(false);
-        r.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
         return await r.Content.ReadFromJsonAsync<List<MqttRole>>(Json, cancellationToken).ConfigureAwait(false) ?? new List<MqttRole>();
     }
 
@@ -88,19 +89,19 @@ public sealed class AgentHttpClient : IBrokerGateway, IDisposable
     {
         var body = new CreateRoleDto(name, description, acls.ToList());
         var r = await _http.PostAsJsonAsync("api/dynsec/roles", body, Json, cancellationToken).ConfigureAwait(false);
-        r.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task DeleteRoleAsync(string name, CancellationToken cancellationToken = default)
     {
         var r = await _http.DeleteAsync($"api/dynsec/roles/{Uri.EscapeDataString(name)}", cancellationToken).ConfigureAwait(false);
-        r.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<MqttGroup>> ListGroupsAsync(CancellationToken cancellationToken = default)
     {
         var r = await _http.GetAsync("api/dynsec/groups", cancellationToken).ConfigureAwait(false);
-        r.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
         return await r.Content.ReadFromJsonAsync<List<MqttGroup>>(Json, cancellationToken).ConfigureAwait(false) ?? new List<MqttGroup>();
     }
 
@@ -108,39 +109,39 @@ public sealed class AgentHttpClient : IBrokerGateway, IDisposable
     {
         var body = new CreateGroupDto(name, description, roleNames.ToList(), clientUsernames.ToList());
         var r = await _http.PostAsJsonAsync("api/dynsec/groups", body, Json, cancellationToken).ConfigureAwait(false);
-        r.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task DeleteGroupAsync(string name, CancellationToken cancellationToken = default)
     {
         var r = await _http.DeleteAsync($"api/dynsec/groups/{Uri.EscapeDataString(name)}", cancellationToken).ConfigureAwait(false);
-        r.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<string> ReadConfigAsync(CancellationToken cancellationToken = default)
     {
         var r = await _http.GetAsync("api/config", cancellationToken).ConfigureAwait(false);
-        r.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
         return await r.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task WriteConfigAsync(string content, CancellationToken cancellationToken = default)
     {
         var r = await _http.PutAsync("api/config", new StringContent(content, Encoding.UTF8, "text/plain"), cancellationToken).ConfigureAwait(false);
-        r.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<string>> GetRecentLogsAsync(int maxLines, CancellationToken cancellationToken = default)
     {
         var r = await _http.GetAsync($"api/logs?lines={maxLines}", cancellationToken).ConfigureAwait(false);
-        r.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
         return await r.Content.ReadFromJsonAsync<List<string>>(Json, cancellationToken).ConfigureAwait(false) ?? new List<string>();
     }
 
     public async Task<IReadOnlyList<TopicTreeNode>> GetTopicRootsAsync(CancellationToken cancellationToken = default)
     {
         var r = await _http.GetAsync("api/topics", cancellationToken).ConfigureAwait(false);
-        r.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
         return await r.Content.ReadFromJsonAsync<List<TopicTreeNode>>(Json, cancellationToken).ConfigureAwait(false) ?? new List<TopicTreeNode>();
     }
 
@@ -148,14 +149,14 @@ public sealed class AgentHttpClient : IBrokerGateway, IDisposable
     {
         using var req = new HttpRequestMessage(HttpMethod.Get, "health");
         var r = await _http.SendAsync(req, cancellationToken).ConfigureAwait(false);
-        r.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
         return await r.Content.ReadFromJsonAsync<AgentInfo>(Json, cancellationToken).ConfigureAwait(false) ?? new AgentInfo();
     }
 
     public async Task RestartBrokerAsync(CancellationToken cancellationToken = default)
     {
         var r = await _http.PostAsync("api/broker/restart", null, cancellationToken).ConfigureAwait(false);
-        r.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Pushes a new API key to the agent (uses current <see cref="BrokerProfile.ApiKey"/> as auth header).</summary>
@@ -285,6 +286,45 @@ public sealed class AgentHttpClient : IBrokerGateway, IDisposable
                 await onRoots(roots).ConfigureAwait(false);
             }
         }
+    }
+
+    private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        var message = await TryReadAgentErrorBodyAsync(response, cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            message = $"HTTP {(int)response.StatusCode} ({response.ReasonPhrase}).";
+        }
+
+        throw new HttpRequestException(message, inner: null, statusCode: response.StatusCode);
+    }
+
+    private static async Task<string?> TryReadAgentErrorBodyAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var text = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return null;
+            }
+
+            using var doc = JsonDocument.Parse(text);
+            if (doc.RootElement.TryGetProperty("error", out var err) && err.ValueKind == JsonValueKind.String)
+            {
+                return err.GetString();
+            }
+        }
+        catch (JsonException)
+        {
+        }
+
+        return null;
     }
 
     private sealed record SetApiKeyDto(string ApiKey);

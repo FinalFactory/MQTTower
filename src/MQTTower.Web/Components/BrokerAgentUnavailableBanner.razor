@@ -1,0 +1,9 @@
+@inject BrokerContext BrokerCtx
+
+@if (BrokerCtx.Selected is not null && BrokerGatewayHelper.GetAgentUnavailableMessage(BrokerCtx.Selected) is { } message)
+{
+    <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Class="mb-4" Dense="false">
+        <MudText Typo="Typo.h6" Class="mb-1">Broker unavailable</MudText>
+        <MudText Typo="Typo.body1">@message</MudText>
+    </MudAlert>
+}

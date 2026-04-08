@@ -38,6 +38,9 @@
 }
 else
 {
+    <BrokerAgentUnavailableBanner />
+    @if (BrokerGatewayHelper.CanUseGateway(BrokerCtx.Selected))
+    {
     @if (_loading)
     {
         <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-2" />
@@ -50,6 +53,7 @@ else
             }
         </div>
     </MudPaper>
+    }
 }
 
 @code {
@@ -106,7 +110,7 @@ else
 
     private void StartLiveUpdates()
     {
-        if (BrokerCtx.Selected is null || string.IsNullOrWhiteSpace(BrokerCtx.Selected.AgentUrl))
+        if (BrokerCtx.Selected is null || string.IsNullOrWhiteSpace(BrokerCtx.Selected.AgentUrl) || !BrokerGatewayHelper.CanUseGateway(BrokerCtx.Selected))
         {
             return;
         }
@@ -205,6 +209,14 @@ else
         {
             _lines = Array.Empty<string>();
             _loading = false;
+            return;
+        }
+
+        if (!BrokerGatewayHelper.CanUseGateway(BrokerCtx.Selected))
+        {
+            _lines = Array.Empty<string>();
+            _loading = false;
+            _liveMode = "idle";
             return;
         }
 
