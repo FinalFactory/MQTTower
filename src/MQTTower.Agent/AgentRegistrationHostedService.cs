@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Net.Sockets;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Options;
 using MQTTower.Infrastructure.Mqtt;
@@ -89,7 +90,16 @@ public sealed class AgentRegistrationHostedService : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Dashboard registration attempt failed");
+                if (ex.InnerException is SocketException se && se.SocketErrorCode == SocketError.ConnectionRefused)
+                {
+                    _logger.LogWarning(
+                        "Dashboard registration: connection refused to {DashboardUrl}. Set Agent__DashboardUrl to the web base URL (same port as ASPNETCORE_URLS, e.g. http://127.0.0.1:2000 if Kestrel listens on 2000).",
+                        o.DashboardUrl);
+                }
+                else
+                {
+                    _logger.LogWarning(ex, "Dashboard registration attempt failed");
+                }
             }
 
             await Task.Delay(delay, stoppingToken).ConfigureAwait(false);

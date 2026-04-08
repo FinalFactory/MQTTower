@@ -216,10 +216,25 @@ write_agent_env() {
   local f="/etc/mqttower-agent/environment"
   mkdir -p /etc/mqttower-agent
   umask 077
+
+  # Prefer the live dashboard port from /etc/mqttower/environment when co-located (fixes Agent__DashboardUrl 8080 vs Kestrel 2000).
+  if [[ -f /etc/mqttower/environment ]]; then
+    local wp
+    wp="$(detect_existing_web_port)" 2>/dev/null || true
+    if [[ -n "$wp" ]]; then
+      if [[ -z "${MQTTOWER_DASHBOARD_URL:-}" || "${MQTTOWER_DASHBOARD_URL}" =~ ^https?://(127\.0\.0\.1|localhost): ]]; then
+        MQTTOWER_DASHBOARD_URL="http://127.0.0.1:${wp}"
+      fi
+    fi
+  fi
+  if [[ -z "${MQTTOWER_DASHBOARD_URL:-}" ]]; then
+    : "${MQTTOWER_WEB_PORT:=8080}"
+    MQTTOWER_DASHBOARD_URL="http://127.0.0.1:${MQTTOWER_WEB_PORT}"
+  fi
+
   : "${MQTTOWER_MQTT_USER:=mqttower-admin}"
   : "${MQTTOWER_MQTT_PASS:=}"
   : "${MQTTOWER_AGENT_PORT:=5080}"
-  : "${MQTTOWER_DASHBOARD_URL:=}"
   : "${MQTTOWER_REG_SECRET:=}"
   : "${MQTTOWER_API_KEY:=}"
   : "${MQTTOWER_PUBLIC_AGENT_URL:=}"
@@ -232,9 +247,9 @@ write_agent_env() {
     ensure_env_key "$f" "MQTTower__BrokerPassword" "${MQTTOWER_MQTT_PASS}"
     ensure_env_key "$f" "Agent__HttpPort" "${MQTTOWER_AGENT_PORT}"
     ensure_env_key "$f" "Agent__HttpsPort" "0"
-    if [[ -n "${MQTTOWER_DASHBOARD_URL:-}" ]]; then
-      sed -i "s|^Agent__DashboardUrl=.*|Agent__DashboardUrl=${MQTTOWER_DASHBOARD_URL}|" "$f" 2>/dev/null \
-        || ensure_env_key "$f" "Agent__DashboardUrl" "${MQTTOWER_DASHBOARD_URL}"
+    sed -i "s|^Agent__DashboardUrl=.*|Agent__DashboardUrl=${MQTTOWER_DASHBOARD_URL}|" "$f" 2>/dev/null || true
+    if ! grep -q '^Agent__DashboardUrl=' "$f" 2>/dev/null; then
+      printf 'Agent__DashboardUrl=%s\n' "${MQTTOWER_DASHBOARD_URL}" >>"$f"
     fi
     ensure_env_key "$f" "Agent__RegistrationToken" "${MQTTOWER_REG_SECRET}"
     ensure_env_key "$f" "Agent__ApiKey" "${MQTTOWER_API_KEY}"

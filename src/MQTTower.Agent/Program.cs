@@ -135,7 +135,7 @@ app.UseExceptionHandler(exceptionApp =>
     {
         var feature = context.Features.Get<IExceptionHandlerFeature>();
         var ex = feature?.Error;
-        if (ex is TimeoutException)
+        if (ex is TimeoutException || ex?.InnerException is TimeoutException)
         {
             context.Response.StatusCode = StatusCodes.Status504GatewayTimeout;
             await context.Response.WriteAsJsonAsync(new
@@ -262,6 +262,24 @@ app.MapGet("/health", (MqttConnectionService m, ILoggerFactory loggerFactory) =>
 }).AllowAnonymous();
 
 var api = app.MapGroup("/api").RequireRateLimiting("agent");
+
+// Handle DynSec timeouts here so ExceptionHandlerMiddleware does not log them as unhandled errors.
+api.AddEndpointFilter(async (invocationContext, next) =>
+{
+    try
+    {
+        return await next(invocationContext).ConfigureAwait(false);
+    }
+    catch (TimeoutException)
+    {
+        return Results.Json(
+            new
+            {
+                error = "DynSec request timed out. Ensure Mosquitto is running and the dynamic-security plugin is active.",
+            },
+            statusCode: StatusCodes.Status504GatewayTimeout);
+    }
+});
 
 api.MapPost("/agent/key", (SetApiKeyBody body, AgentApiKeyState state) =>
 {
