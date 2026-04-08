@@ -1,6 +1,18 @@
-# MQTTower
+<p align="center">
+  <img src="src/MQTTower.Web/wwwroot/mqttower-icon.png" alt="MQTTower" width="200" />
+</p>
 
-A web dashboard for managing one or more Mosquitto MQTT brokers from a single interface.
+<p align="center">
+  <strong>A web dashboard for managing one or more Mosquitto MQTT brokers from a single interface.</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/FinalFactory/MQTTower/releases/latest"><img src="https://img.shields.io/github/v/release/FinalFactory/MQTTower?style=flat-square&color=00c9a7" alt="GitHub Release" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/FinalFactory/MQTTower?style=flat-square" alt="License" /></a>
+  <img src="https://img.shields.io/badge/.NET-9.0-512BD4?style=flat-square&logo=dotnet" alt=".NET 9" />
+</p>
+
+---
 
 > **Early development** — APIs, configuration, and database schema may change between releases.
 
@@ -23,8 +35,8 @@ The system has two components:
 - **Notifications** — Send alerts via ntfy, webhook, or SMTP when watchers fire.
 - **Metrics & charts** — Broker stats over time (connected clients, messages, bytes).
 - **Audit log** — Track who changed what, when.
-- **Agent registration** — Shared secret or one-time tokens for secure agent enrollment.
-- **Updates** — LXC installs can pull new agent/web builds from GitHub Releases (host `update` command or `/usr/bin/update` in the container).
+- **Secure agent enrollment** — Shared secret or one-time tokens for agent registration.
+- **Live logs & topic explorer** — Stream broker logs and inspect topic trees in real time.
 - **mTLS** — Optional mutual TLS between dashboard and agents.
 
 ## Screenshots
@@ -43,21 +55,21 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/FinalFactory/MQTTower/ma
 
 The installer asks which mode you want:
 
-- **Broker** — Mosquitto + Agent (point the agent at an existing dashboard URL).
-- **Dashboard** — MQTTower.Web only; enter the MQTT broker host (e.g. another LXC).
-- **Full stack** — Mosquitto + Agent + Dashboard in one LXC (local broker and web on `127.0.0.1`).
+| Mode | What it installs |
+|---|---|
+| **Full stack** | Mosquitto + Agent + Dashboard in one LXC |
+| **Broker** | Mosquitto + Agent (point at an existing dashboard) |
+| **Dashboard** | MQTTower.Web only (connect to remote broker agents) |
 
 Each mode creates a Debian LXC, installs dependencies, and sets up systemd services.
 
-For **Mosquitto + agent** on a separate machine, use **Broker** mode (or **Docker Compose** below).
-
-To update an existing container later (on the Proxmox host):
+To **update** an existing container:
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/FinalFactory/MQTTower/main/deploy/ct/mqttower.sh)" update <CTID>
 ```
 
-Inside the LXC you can also run `/usr/bin/update` (re-runs the GitHub release update path).
+Or run `/usr/bin/update` inside the LXC.
 
 ### Docker
 
@@ -66,7 +78,7 @@ cd docker/
 docker compose up -d
 ```
 
-This starts the dashboard on **port 8080** and a broker container (Mosquitto + Agent) on **MQTT 1883** / **Agent HTTP 5080**. Edit `.env` or the `environment` block in `docker-compose.yml` to change credentials and ports.
+Starts the dashboard on **port 8080** and a broker container (Mosquitto + Agent) on **MQTT 1883** / **Agent HTTP 5080**. Edit `.env` or the `environment` block in `docker-compose.yml` to change credentials and ports.
 
 ### From source
 
@@ -89,9 +101,9 @@ dotnet run --project src/MQTTower.Agent
 | `MQTTOWER_ADMIN_USER` | Initial admin username | `admin` |
 | `MQTTOWER_ADMIN_PASS` | Initial admin password | *(generated on LXC install)* |
 | `ConnectionStrings__Default` | SQLite connection string | `Data Source=mqttower.db` |
-| `MQTTower__LocalAgentUrl` | Co-located agent HTTP URL (full-stack / Docker; seeds the Local broker row) | — |
+| `MQTTower__LocalAgentUrl` | Co-located agent URL (full-stack / Docker) | — |
 | `MQTTower__LocalAgentApiKey` | API key for that agent (matches `Agent__ApiKey`) | — |
-| `MQTTower__WatcherNotifySecret` | Shared secret for watcher notifications from agents (`POST /api/watcher-notify`) | — |
+| `MQTTower__WatcherNotifySecret` | Shared secret for watcher notifications from agents | — |
 | `MQTTower__RegistrationSecret` | Shared secret for agent registration | *(empty — only one-time tokens accepted)* |
 | `ASPNETCORE_URLS` | Listen address | `http://+:8080` |
 
@@ -103,10 +115,10 @@ dotnet run --project src/MQTTower.Agent
 | `Agent__DashboardUrl` | Dashboard base URL for auto-registration | — |
 | `Agent__RegistrationToken` | Registration secret or one-time token | — |
 | `Agent__HttpPort` | Agent HTTP listen port | `5080` |
-| `Agent__WatcherNotifySecret` | Shared secret for watcher callbacks to the dashboard (must match `MQTTower__WatcherNotifySecret`) | — |
-| `MQTTower__MosquittoConfigPath` | Path to `mosquitto.conf` the agent manages | `/etc/mosquitto/mosquitto.conf` |
+| `Agent__WatcherNotifySecret` | Shared secret for watcher callbacks (must match dashboard) | — |
+| `MQTTower__MosquittoConfigPath` | Path to `mosquitto.conf` | `/etc/mosquitto/mosquitto.conf` |
 | `MQTTower__MosquittoLogPath` | Path to Mosquitto log file | `/var/log/mosquitto/mosquitto.log` |
-| `MQTTower__BrokerUsername` | MQTT login (DynSec admin user for the agent) | — |
+| `MQTTower__BrokerUsername` | MQTT login (DynSec admin user) | — |
 | `MQTTower__BrokerPassword` | MQTT password | — |
 
 ### mTLS (optional)
@@ -132,19 +144,11 @@ Open `MQTTower.sln` (or `MultiBroker.Debug.slnf` for a lighter load) in Visual S
 
 After starting, approve pending brokers under **Brokers** in the dashboard.
 
-### Releases
-
-The repo root file **`VERSION`** holds the current semver (e.g. `0.2.0`). When **`main`** is updated with a **higher** version than the latest `v*` git tag, CI creates tag `vX.Y.Z`, builds both apps, and publishes a **GitHub Release** with the agent and web tarballs (so `releases/latest` works for the LXC installers). You can also push a `v*` tag from git locally; that triggers the release workflow too.
-
 ### Running tests
 
 ```bash
 dotnet test
 ```
-
-### Logging
-
-Dashboard and agent use Serilog with console and rolling file sinks. Tune levels in `appsettings.json` under `Serilog` / `Logging`.
 
 ## License
 
