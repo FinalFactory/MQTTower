@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.AspNetCore.Diagnostics;
 using Serilog;
 using System.Net.Http.Headers;
 using System.Security.Cryptography.X509Certificates;
@@ -127,6 +128,27 @@ builder.Services.AddRateLimiter(o =>
 });
 
 var app = builder.Build();
+
+app.UseExceptionHandler(exceptionApp =>
+{
+    exceptionApp.Run(async context =>
+    {
+        var feature = context.Features.Get<IExceptionHandlerFeature>();
+        var ex = feature?.Error;
+        if (ex is TimeoutException)
+        {
+            context.Response.StatusCode = StatusCodes.Status504GatewayTimeout;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                error = "DynSec request timed out. Ensure Mosquitto is running and the dynamic-security plugin is active.",
+            }).ConfigureAwait(false);
+            return;
+        }
+
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        await context.Response.WriteAsJsonAsync(new { error = "Internal server error." }).ConfigureAwait(false);
+    });
+});
 
 app.UseMiddleware<ApiKeyAuthMiddleware>();
 app.UseRateLimiter();

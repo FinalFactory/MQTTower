@@ -219,6 +219,11 @@ else
                 Array.Empty<string>()).ConfigureAwait(false);
             _shouldScroll = true;
         }
+        catch (Exception ex)
+        {
+            _lines = Array.Empty<string>();
+            Snackbar.Add($"Could not reach agent for logs: {ex.Message}", Severity.Warning);
+        }
         finally
         {
             _loading = false;

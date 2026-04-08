@@ -110,9 +110,20 @@ public sealed class DynSecService : IDynSecService
             cts.CancelAfter(TimeSpan.FromSeconds(15));
             return await tcs.Task.WaitAsync(cts.Token).ConfigureAwait(false);
         }
-        catch
+        catch (Exception ex)
         {
             _pending.TryRemove(correlation, out _);
+            if (ex is OperationCanceledException oce && !cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogWarning(
+                    oce,
+                    "DynSec: no response within 15s (check Mosquitto, dynamic-security plugin, and MQTT subscription on {ControlTopic}).",
+                    _options.ControlTopic);
+                throw new TimeoutException(
+                    "No DynSec response from Mosquitto within 15 seconds.",
+                    oce);
+            }
+
             throw;
         }
     }

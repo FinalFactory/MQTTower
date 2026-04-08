@@ -62,6 +62,20 @@ systemctl_enable_now_best_effort() {
   return 1
 }
 
+# On re-runs, read the actual web port from the existing env so agent DashboardUrl stays in sync.
+detect_existing_web_port() {
+  local f="/etc/mqttower/environment"
+  if [[ -f "$f" ]]; then
+    local url
+    url="$(grep '^ASPNETCORE_URLS=' "$f" 2>/dev/null | head -n1 | sed 's/.*://')" || true
+    if [[ -n "$url" && "$url" =~ ^[0-9]+$ ]]; then
+      echo "$url"
+      return 0
+    fi
+  fi
+  return 1
+}
+
 # Append KEY=VALUE to file only if KEY is not already present (safe re-runs / new version keys).
 ensure_env_key() {
   local file="$1" key="$2" value="$3"
@@ -194,7 +208,10 @@ write_agent_env() {
     ensure_env_key "$f" "MQTTower__BrokerPassword" "${MQTTOWER_MQTT_PASS}"
     ensure_env_key "$f" "Agent__HttpPort" "${MQTTOWER_AGENT_PORT}"
     ensure_env_key "$f" "Agent__HttpsPort" "0"
-    ensure_env_key "$f" "Agent__DashboardUrl" "${MQTTOWER_DASHBOARD_URL}"
+    if [[ -n "${MQTTOWER_DASHBOARD_URL:-}" ]]; then
+      sed -i "s|^Agent__DashboardUrl=.*|Agent__DashboardUrl=${MQTTOWER_DASHBOARD_URL}|" "$f" 2>/dev/null \
+        || ensure_env_key "$f" "Agent__DashboardUrl" "${MQTTOWER_DASHBOARD_URL}"
+    fi
     ensure_env_key "$f" "Agent__RegistrationToken" "${MQTTOWER_REG_SECRET}"
     ensure_env_key "$f" "Agent__ApiKey" "${MQTTOWER_API_KEY}"
     ensure_env_key "$f" "Agent__AutoRegister" "true"
@@ -465,7 +482,9 @@ install_fullstack() {
 
   : "${MQTTOWER_MQTT_PORT:=1883}"
   : "${MQTTOWER_AGENT_PORT:=5080}"
-  : "${MQTTOWER_WEB_PORT:=8080}"
+  if [[ -z "${MQTTOWER_WEB_PORT:-}" ]]; then
+    MQTTOWER_WEB_PORT="$(detect_existing_web_port)" 2>/dev/null || MQTTOWER_WEB_PORT=8080
+  fi
   : "${MQTTOWER_BROKER_HOST:=127.0.0.1}"
   : "${MQTTOWER_BROKER_PORT:=1883}"
   : "${MQTTOWER_MQTT_USER:=mqttower-admin}"
