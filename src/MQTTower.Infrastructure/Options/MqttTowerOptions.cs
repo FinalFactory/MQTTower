@@ -11,6 +11,7 @@ public sealed class MqttTowerOptions
     public int BrokerPort { get; set; } = 1883;
     public string? BrokerUsername { get; set; }
     public string? BrokerPassword { get; set; }
+    /// <summary>DynSec command publish topic. Replies are published on a subtopic (e.g. .../v1/response); the agent subscribes to <c>{ControlTopic}/#</c>.</summary>
     public string ControlTopic { get; set; } = "$CONTROL/dynamic-security/v1";
     public string DatabasePath { get; set; } = "Data Source=mqttower.db";
     public string MosquittoConfigPath { get; set; } = "/etc/mosquitto/mosquitto.conf";

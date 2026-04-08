@@ -47,7 +47,10 @@ public sealed class DynSecService : IDynSecService
                 return;
             }
 
-            await _subscriber.SubscribeAsync(_options.ControlTopic, OnControlMessageAsync, cancellationToken).ConfigureAwait(false);
+            // Mosquitto publishes command results to e.g. $CONTROL/dynamic-security/v1/response, not the same
+            // topic as the request — an exact subscription to .../v1 never receives them (see dynamic-security docs).
+            var responseFilter = ControlResponseSubscriptionFilter(_options.ControlTopic);
+            await _subscriber.SubscribeAsync(responseFilter, OnControlMessageAsync, cancellationToken).ConfigureAwait(false);
             _subscribed = true;
         }
         finally
@@ -110,7 +113,8 @@ public sealed class DynSecService : IDynSecService
             {
                 _logger.LogWarning(
                     oce,
-                    "DynSec: no response within 15s (check Mosquitto, dynamic-security plugin, and MQTT subscription on {ControlTopic}).",
+                    "DynSec: no response within 15s (check Mosquitto, dynamic-security plugin, and that the agent MQTT user can subscribe to {ResponseFilter}; commands publish to {ControlTopic}).",
+                    ControlResponseSubscriptionFilter(_options.ControlTopic),
                     _options.ControlTopic);
                 throw new TimeoutException(
                     "No DynSec response from Mosquitto within 15 seconds.",
@@ -265,5 +269,21 @@ public sealed class DynSecService : IDynSecService
     public async Task DeleteGroupAsync(string name, CancellationToken cancellationToken = default)
     {
         await SendCommandAsync(new JsonObject { ["command"] = "deleteGroup", ["groupname"] = name }, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Topic filter for receiving DynSec JSON replies. Mosquitto publishes responses under the control API path (e.g. .../v1/response), not on the publish topic alone.
+    /// </summary>
+    internal static string ControlResponseSubscriptionFilter(string controlTopic)
+    {
+        var t = controlTopic.Trim().TrimEnd('/');
+        if (t.Length == 0)
+        {
+            return "$CONTROL/dynamic-security/v1/#";
+        }
+
+        return t.EndsWith("/#", StringComparison.Ordinal) || t.EndsWith("/+", StringComparison.Ordinal)
+            ? t
+            : t + "/#";
     }
 }
