@@ -1,3 +1,6 @@
+## Integration tests (Docker bind mounts under workspace on CI)
+.mqttower-integration/
+
 ## Build
 [Bb]in/
 [Oo]bj/

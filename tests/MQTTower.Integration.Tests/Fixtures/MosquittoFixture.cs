@@ -37,9 +37,22 @@ public sealed class MosquittoFixture : IAsyncLifetime
     /// <summary>Path on the host to <c>mosquitto.conf</c> (bind-mounted).</summary>
     public string HostConfigPath => Path.Combine(_hostRoot, "config", "mosquitto.conf");
 
+    private static string CreateHostRootDirectory()
+    {
+        var workspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        if (!string.IsNullOrWhiteSpace(workspace))
+        {
+            return Path.Combine(workspace, ".mqttower-integration", "run-" + Guid.NewGuid().ToString("N"));
+        }
+
+        return Path.Combine(Path.GetTempPath(), "mqttower-it-" + Guid.NewGuid().ToString("N"));
+    }
+
     public async Task InitializeAsync()
     {
-        _hostRoot = Path.Combine(Path.GetTempPath(), "mqttower-it-" + Guid.NewGuid().ToString("N"));
+        // GitHub Actions + Docker: bind mounts under /tmp often never expose files written in the container on the host.
+        // Use GITHUB_WORKSPACE when set so mounts use the checked-out filesystem (matches local dev behavior).
+        _hostRoot = CreateHostRootDirectory();
         Directory.CreateDirectory(Path.Combine(_hostRoot, "config"));
         Directory.CreateDirectory(Path.Combine(_hostRoot, "data"));
         Directory.CreateDirectory(Path.Combine(_hostRoot, "log"));
@@ -90,8 +103,7 @@ public sealed class MosquittoFixture : IAsyncLifetime
     private async Task EnsureAdminCanPublishApplicationTopicsAsync()
     {
         var jsonPath = Path.Combine(_hostRoot, "data", "dynamic-security.json");
-        // CI (e.g. GitHub Actions + Docker) can delay host visibility of bind-mounted files after the broker is up.
-        await WaitForDynSecJsonOnHostAsync(jsonPath, TimeSpan.FromSeconds(90)).ConfigureAwait(false);
+        await WaitForDynSecJsonInContainerAsync(TimeSpan.FromSeconds(120)).ConfigureAwait(false);
 
         const string applicationPublishRole = "client";
 
@@ -107,14 +119,15 @@ public sealed class MosquittoFixture : IAsyncLifetime
                 $"mosquitto_ctrl addClientRole {AdminUsername} {applicationPublishRole} failed (exit {addRoleResult.ExitCode}). Stderr: {addRoleResult.Stderr}. Stdout: {addRoleResult.Stdout}.");
         }
 
-        for (var i = 0; i < 50 && !AdminRoleHasPublishClientSendHash(jsonPath); i++)
+        for (var i = 0; i < 50; i++)
         {
-            await Task.Delay(200).ConfigureAwait(false);
-        }
+            var text = await ReadDynSecJsonTextAsync(jsonPath).ConfigureAwait(false);
+            if (JsonGrantsAdminPublishClientSendHash(text))
+            {
+                return;
+            }
 
-        if (AdminRoleHasPublishClientSendHash(jsonPath))
-        {
-            return;
+            await Task.Delay(200).ConfigureAwait(false);
         }
 
         // Ensure admin is linked to the stock "client" role on disk, then restart so Mosquitto reloads DynSec from the file.
@@ -124,18 +137,19 @@ public sealed class MosquittoFixture : IAsyncLifetime
         MappedMqttPort = _container.GetMappedPublicPort(1883);
         await WaitForMqttPortOnHostAsync(TimeSpan.FromSeconds(30)).ConfigureAwait(false);
 
-        for (var i = 0; i < 50 && !AdminRoleHasPublishClientSendHash(jsonPath); i++)
+        for (var i = 0; i < 50; i++)
         {
+            var text = await ReadDynSecJsonTextAsync(jsonPath).ConfigureAwait(false);
+            if (JsonGrantsAdminPublishClientSendHash(text))
+            {
+                return;
+            }
+
             await Task.Delay(200).ConfigureAwait(false);
         }
 
-        if (AdminRoleHasPublishClientSendHash(jsonPath))
-        {
-            return;
-        }
-
         // Last resort: add publishClientSend # to each role already assigned to admin.
-        var roleNames = GetRoleNamesAssignedToUser(jsonPath, AdminUsername);
+        var roleNames = GetRoleNamesAssignedToUser(await ReadDynSecJsonTextAsync(jsonPath).ConfigureAwait(false), AdminUsername);
         foreach (var rolename in roleNames)
         {
             var addScript =
@@ -150,17 +164,18 @@ public sealed class MosquittoFixture : IAsyncLifetime
             }
         }
 
-        for (var i = 0; i < 50 && !AdminRoleHasPublishClientSendHash(jsonPath); i++)
+        for (var i = 0; i < 50; i++)
         {
+            var text = await ReadDynSecJsonTextAsync(jsonPath).ConfigureAwait(false);
+            if (JsonGrantsAdminPublishClientSendHash(text))
+            {
+                return;
+            }
+
             await Task.Delay(200).ConfigureAwait(false);
         }
 
-        if (AdminRoleHasPublishClientSendHash(jsonPath))
-        {
-            return;
-        }
-
-        var snippet = await File.ReadAllTextAsync(jsonPath).ConfigureAwait(false);
+        var snippet = await ReadDynSecJsonTextAsync(jsonPath).ConfigureAwait(false);
         if (snippet.Length > 4000)
         {
             snippet = snippet[..4000] + "…";
@@ -170,24 +185,9 @@ public sealed class MosquittoFixture : IAsyncLifetime
             "Admin still has no publishClientSend allow for topic '#' after client role + patch + optional addRoleACL. dynamic-security.json (truncated): " + snippet);
     }
 
-    private static bool AdminRoleHasPublishClientSendHash(string dynamicSecurityJsonPath)
+    private static bool JsonGrantsAdminPublishClientSendHash(string jsonText)
     {
-        if (!File.Exists(dynamicSecurityJsonPath))
-        {
-            return false;
-        }
-
-        string text;
-        try
-        {
-            text = File.ReadAllText(dynamicSecurityJsonPath);
-        }
-        catch
-        {
-            return false;
-        }
-
-        using var doc = JsonDocument.Parse(text);
+        using var doc = JsonDocument.Parse(jsonText);
         if (!TryGetClientByUsername(doc.RootElement, AdminUsername, out var adminClient))
         {
             return false;
@@ -260,10 +260,9 @@ public sealed class MosquittoFixture : IAsyncLifetime
         return null;
     }
 
-    private static IReadOnlyList<string> GetRoleNamesAssignedToUser(string dynamicSecurityJsonPath, string username)
+    private static IReadOnlyList<string> GetRoleNamesAssignedToUser(string jsonText, string username)
     {
-        var text = File.ReadAllText(dynamicSecurityJsonPath);
-        using var doc = JsonDocument.Parse(text);
+        using var doc = JsonDocument.Parse(jsonText);
         if (!TryGetClientByUsername(doc.RootElement, username, out var client))
         {
             throw new InvalidOperationException($"dynamic-security.json: no client with username '{username}'.");
@@ -318,49 +317,14 @@ public sealed class MosquittoFixture : IAsyncLifetime
         }
     }
 
-    private static async Task WaitForFileExistsAsync(string path, TimeSpan timeout)
-    {
-        var start = DateTime.UtcNow;
-        while (!File.Exists(path))
-        {
-            if (DateTime.UtcNow - start > timeout)
-            {
-                throw new InvalidOperationException($"Timed out waiting for {path}.");
-            }
-
-            await Task.Delay(50).ConfigureAwait(false);
-        }
-    }
-
-    /// <summary>
-    /// Waits until <c>dynamic-security.json</c> is visible on the host mount. Also probes the container so we keep
-    /// polling when the file exists inside Docker but the host path lags (common under load on CI).
-    /// </summary>
-    private async Task WaitForDynSecJsonOnHostAsync(string hostJsonPath, TimeSpan timeout)
+    private async Task WaitForDynSecJsonInContainerAsync(TimeSpan timeout)
     {
         const string containerPath = "/mosquitto/data/dynamic-security.json";
         var start = DateTime.UtcNow;
         while (DateTime.UtcNow - start < timeout)
         {
-            if (File.Exists(hostJsonPath))
-            {
-                return;
-            }
-
-            var inContainer = await _container.ExecAsync(new[] { "test", "-f", containerPath }).ConfigureAwait(false);
-            if (inContainer.ExitCode != 0)
-            {
-                await Task.Delay(200).ConfigureAwait(false);
-                continue;
-            }
-
-            // File exists in the container; wait for the bind mount to show it on the host.
-            for (var i = 0; i < 200 && !File.Exists(hostJsonPath); i++)
-            {
-                await Task.Delay(100).ConfigureAwait(false);
-            }
-
-            if (File.Exists(hostJsonPath))
+            var r = await _container.ExecAsync(new[] { "/bin/sh", "-c", $"test -f {containerPath}" }).ConfigureAwait(false);
+            if (r.ExitCode == 0)
             {
                 return;
             }
@@ -369,7 +333,26 @@ public sealed class MosquittoFixture : IAsyncLifetime
         }
 
         throw new InvalidOperationException(
-            $"Timed out waiting for host file {hostJsonPath}. Bind mount may not be syncing; container path {containerPath} was checked.");
+            $"Timed out waiting for {containerPath} in the Mosquitto container (dynsec init may have failed).");
+    }
+
+    /// <summary>Reads DynSec JSON from the host bind mount when present; otherwise from the container (CI bind mount quirks).</summary>
+    private async Task<string> ReadDynSecJsonTextAsync(string hostJsonPath)
+    {
+        if (File.Exists(hostJsonPath))
+        {
+            return await File.ReadAllTextAsync(hostJsonPath).ConfigureAwait(false);
+        }
+
+        const string containerPath = "/mosquitto/data/dynamic-security.json";
+        var cat = await _container.ExecAsync(new[] { "/bin/sh", "-c", $"cat {containerPath}" }).ConfigureAwait(false);
+        if (cat.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"Could not read dynamic-security.json (host path missing and container cat failed). Stderr: {cat.Stderr}");
+        }
+
+        return cat.Stdout;
     }
 
     /// <summary>Waits until the mapped host port accepts TCP (broker listening after restart).</summary>
@@ -393,9 +376,9 @@ public sealed class MosquittoFixture : IAsyncLifetime
         throw new InvalidOperationException($"Timed out waiting for MQTT broker on 127.0.0.1:{MappedMqttPort}.");
     }
 
-    private static async Task PatchAdminClientRoleOnDiskAsync(string dynamicSecurityJsonPath, string rolenameToAdd)
+    private async Task PatchAdminClientRoleOnDiskAsync(string dynamicSecurityJsonPath, string rolenameToAdd)
     {
-        var text = await File.ReadAllTextAsync(dynamicSecurityJsonPath).ConfigureAwait(false);
+        var text = await ReadDynSecJsonTextAsync(dynamicSecurityJsonPath).ConfigureAwait(false);
         var root = JsonNode.Parse(text) as JsonObject
             ?? throw new InvalidOperationException("dynamic-security.json: expected object root.");
         var clients = root["clients"] as JsonArray
