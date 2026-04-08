@@ -91,14 +91,46 @@ install_dotnet_runtime() {
 
 dynsec_plugin_path() {
   local p
-  for p in /usr/lib/x86_64-linux-gnu/mosquitto_dynamic_security.so /usr/lib/mosquitto_dynamic_security.so; do
+  for p in \
+    /usr/lib/x86_64-linux-gnu/mosquitto_dynamic_security.so \
+    /usr/lib/aarch64-linux-gnu/mosquitto_dynamic_security.so \
+    /usr/lib/arm-linux-gnueabihf/mosquitto_dynamic_security.so \
+    /usr/lib/mosquitto_dynamic_security.so; do
     if [[ -f "$p" ]]; then
       echo "$p"
       return 0
     fi
   done
+  p="$(find /usr/lib -maxdepth 2 -name 'mosquitto_dynamic_security.so' -type f 2>/dev/null | head -n1)"
+  if [[ -n "$p" && -f "$p" ]]; then
+    echo "$p"
+    return 0
+  fi
   msg_error "mosquitto_dynamic_security.so not found"
   exit 127
+}
+
+# Debian often ships listener/port in the main file or another conf.d drop-in; mqttower.conf adds listener + DynSec.
+# Duplicate listeners cause mosquitto to exit with status 3.
+mosquitto_disable_conflicting_listeners() {
+  local f
+  local -a files
+  mapfile -t files < <(find /etc/mosquitto/conf.d -maxdepth 1 -name '*.conf' -type f 2>/dev/null || true)
+  for f in /etc/mosquitto/mosquitto.conf "${files[@]}"; do
+    [[ -f "$f" ]] || continue
+    [[ "$(basename "$f")" == "mqttower.conf" ]] && continue
+    if ! grep -qE '^[[:space:]]*listener[[:space:]]|^[[:space:]]*port[[:space:]]|^[[:space:]]*bind_address[[:space:]]' "$f" 2>/dev/null; then
+      continue
+    fi
+    msg_info "Disabling default listener/port/bind lines in ${f} (MQTTower uses conf.d/mqttower.conf)."
+    cp -a "$f" "${f}.bak-mqttower"
+    sed -i \
+      -e '/^[[:space:]]*#/b' \
+      -e 's/^[[:space:]]*\(listener\)/#\1/' \
+      -e 's/^[[:space:]]*\(port\)/#\1/' \
+      -e 's/^[[:space:]]*\(bind_address\)/#\1/' \
+      "$f"
+  done
 }
 
 init_dynsec() {
@@ -128,13 +160,11 @@ write_mosquitto_conf() {
   plugin="$(dynsec_plugin_path)"
   mkdir -p /var/lib/mosquitto
   chown mosquitto:mosquitto /var/lib/mosquitto 2>/dev/null || true
+  # Do not set persistence / persistence_location / log_dest here: Debian's
+  # /etc/mosquitto/mosquitto.conf already defines them; duplicates abort with exit 3.
   cat <<EOF >"$conf"
 per_listener_settings false
 allow_anonymous false
-persistence true
-persistence_location /var/lib/mosquitto/
-log_dest file /var/log/mosquitto/mosquitto.log
-log_type all
 listener ${port}
 plugin ${plugin}
 plugin_opt_config_file /var/lib/mosquitto/dynamic-security.json
@@ -282,6 +312,8 @@ install_broker_stack() {
   $STD apt-get install -y mosquitto mosquitto-clients
   msg_ok "Installed Mosquitto"
 
+  mosquitto_disable_conflicting_listeners
+
   install_dotnet_runtime
   migrate_legacy_version
 
@@ -425,6 +457,8 @@ install_fullstack() {
   msg_info "Installing Mosquitto"
   $STD apt-get install -y mosquitto mosquitto-clients
   msg_ok "Installed Mosquitto"
+
+  mosquitto_disable_conflicting_listeners
 
   install_dotnet_runtime
   migrate_legacy_version
