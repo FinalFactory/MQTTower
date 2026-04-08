@@ -527,9 +527,9 @@ main() {
   esac
 
   motd_ssh
-  customize
+  customize 2>/dev/null || true
   write_mqttower_update_command
-  cleanup_lxc
+  cleanup_lxc 2>/dev/null || true
 }
 
 main "$@"
