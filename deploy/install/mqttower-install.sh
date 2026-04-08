@@ -76,6 +76,30 @@ detect_existing_web_port() {
   return 1
 }
 
+# Fail fast if agent tarball left corrupt/partial DLLs (BadImageFormatException at runtime).
+verify_mqttower_agent_binaries() {
+  local d="${INSTALL_DIR_AGENT:-/opt/mqttower-agent}"
+  local f p sz
+  for f in MQTTower.Agent.dll MQTTower.Infrastructure.dll MQTTower.Core.dll; do
+    p="${d}/${f}"
+    if [[ ! -f "$p" ]]; then
+      msg_error "Missing ${p} — agent deploy incomplete."
+      exit 1
+    fi
+    sz="$(stat -c%s "$p" 2>/dev/null || wc -c <"$p" | tr -d ' ')"
+    if [[ "${sz:-0}" -lt 4096 ]]; then
+      msg_error "${p} is too small (${sz} bytes); likely corrupt or partial extract. Remove ${d} and redeploy."
+      exit 1
+    fi
+    if command -v file >/dev/null 2>&1; then
+      if ! file -b "$p" | grep -qiE 'PE32|PE32\+|Mono/\.Net|assembly|CLR'; then
+        msg_warn "Unexpected file(1) type for ${p}: $(file -b "$p")"
+      fi
+    fi
+  done
+  msg_ok "Verified agent binaries under ${d}"
+}
+
 # Append KEY=VALUE to file only if KEY is not already present (safe re-runs / new version keys).
 ensure_env_key() {
   local file="$1" key="$2" value="$3"
@@ -344,6 +368,7 @@ install_broker_stack() {
   init_dynsec
 
   fetch_and_deploy_gh_release "mqttower-agent" "${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}" "prebuild" "latest" "${INSTALL_DIR_AGENT}" "${ASSET_AGENT}"
+  verify_mqttower_agent_binaries
 
   write_mosquitto_conf "${MQTTOWER_MQTT_PORT}"
   write_agent_env
@@ -498,6 +523,7 @@ install_fullstack() {
   init_dynsec
 
   fetch_and_deploy_gh_release "mqttower-agent" "${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}" "prebuild" "latest" "${INSTALL_DIR_AGENT}" "${ASSET_AGENT}"
+  verify_mqttower_agent_binaries
 
   write_mosquitto_conf "${MQTTOWER_MQTT_PORT}"
   write_agent_env

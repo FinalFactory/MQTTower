@@ -145,6 +145,16 @@ app.UseExceptionHandler(exceptionApp =>
             return;
         }
 
+        if (ex is BadImageFormatException or FileLoadException)
+        {
+            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                error = "Invalid or corrupt assembly on disk. Remove /opt/mqttower-agent and reinstall from the GitHub release tarball.",
+            }).ConfigureAwait(false);
+            return;
+        }
+
         context.Response.StatusCode = StatusCodes.Status500InternalServerError;
         await context.Response.WriteAsJsonAsync(new { error = "Internal server error." }).ConfigureAwait(false);
     });
@@ -155,30 +165,10 @@ app.UseRateLimiter();
 
 var startTime = Process.GetCurrentProcess().StartTime;
 
+// Best-effort version; reflection on damaged assemblies can throw BadImageFormatException.
 static string AgentVersion()
 {
     var asm = typeof(Program).Assembly;
-    var informational = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-    if (!string.IsNullOrWhiteSpace(informational))
-    {
-        return informational;
-    }
-
-    var fileAttr = asm.GetCustomAttribute<AssemblyFileVersionAttribute>()?.Version;
-    if (!string.IsNullOrWhiteSpace(fileAttr))
-    {
-        return fileAttr;
-    }
-
-    try
-    {
-        return asm.GetName().Version?.ToString() ?? "0.0";
-    }
-    catch (Exception)
-    {
-        // GetName() validates CultureInfo from manifest; corrupt or unusual metadata can throw CultureNotFoundException.
-    }
-
     try
     {
         var loc = asm.Location;
@@ -200,34 +190,75 @@ static string AgentVersion()
     {
     }
 
-    return "0.0";
+    try
+    {
+        var informational = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (!string.IsNullOrWhiteSpace(informational))
+        {
+            return informational;
+        }
+
+        var fileAttr = asm.GetCustomAttribute<AssemblyFileVersionAttribute>()?.Version;
+        if (!string.IsNullOrWhiteSpace(fileAttr))
+        {
+            return fileAttr;
+        }
+
+        return asm.GetName().Version?.ToString() ?? "0.0";
+    }
+    catch (BadImageFormatException)
+    {
+    }
+    catch (FileLoadException)
+    {
+    }
+    catch (Exception)
+    {
+        // CultureNotFoundException from GetName(), etc.
+    }
+
+    return "unknown";
 }
 
 app.MapGet("/health", (MqttConnectionService m, ILoggerFactory loggerFactory) =>
 {
-    string? thumb = null;
-    var opts = app.Services.GetRequiredService<IOptions<AgentOptions>>().Value;
     var log = loggerFactory.CreateLogger("MQTTower.Agent.Health");
-    if (!string.IsNullOrEmpty(opts.CertificatePath) && File.Exists(opts.CertificatePath))
+    try
     {
-        try
+        string? thumb = null;
+        var opts = app.Services.GetRequiredService<IOptions<AgentOptions>>().Value;
+        if (!string.IsNullOrEmpty(opts.CertificatePath) && File.Exists(opts.CertificatePath))
         {
-            thumb = AgentTlsCertificate.GetThumbprintSha256(opts.CertificatePath, opts.CertificatePassword ?? string.Empty);
+            try
+            {
+                thumb = AgentTlsCertificate.GetThumbprintSha256(opts.CertificatePath, opts.CertificatePassword ?? string.Empty);
+            }
+            catch (Exception ex)
+            {
+                log.LogWarning(ex, "Could not read TLS certificate thumbprint from {Path}", opts.CertificatePath);
+            }
         }
-        catch (Exception ex)
-        {
-            log.LogWarning(ex, "Could not read TLS certificate thumbprint from {Path}", opts.CertificatePath);
-        }
-    }
 
-    return Results.Ok(new AgentInfo
+        return Results.Ok(new AgentInfo
+        {
+            AgentVersion = AgentVersion(),
+            BrokerVersion = null,
+            Uptime = DateTime.UtcNow - startTime.ToUniversalTime(),
+            MqttConnected = m.IsConnected,
+            TlsCertThumbprint = thumb,
+        });
+    }
+    catch (Exception ex)
     {
-        AgentVersion = AgentVersion(),
-        BrokerVersion = null,
-        Uptime = DateTime.UtcNow - startTime.ToUniversalTime(),
-        MqttConnected = m.IsConnected,
-        TlsCertThumbprint = thumb,
-    });
+        log.LogError(ex, "Health endpoint failed (often indicates corrupt agent binaries; redeploy the release tarball)");
+        return Results.Json(
+            new
+            {
+                error = "Health check failed. Agent DLLs may be corrupt or incompletely deployed; reinstall from a fresh GitHub release tarball.",
+                detail = ex.Message,
+            },
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
 }).AllowAnonymous();
 
 var api = app.MapGroup("/api").RequireRateLimiting("agent");
