@@ -19,10 +19,8 @@ public sealed class BrokerStatsCollector : IBrokerStatsProvider
         _logger = logger;
     }
 
-    public void Attach(IMqttSubscriber subscriber, CancellationToken cancellationToken)
-    {
-        _ = subscriber.SubscribeAsync("$SYS/#", OnSysMessageAsync, cancellationToken);
-    }
+    public Task AttachAsync(IMqttSubscriber subscriber, CancellationToken cancellationToken) =>
+        subscriber.SubscribeAsync("$SYS/#", OnSysMessageAsync, cancellationToken);
 
     private Task OnSysMessageAsync(MqttAppMessage msg)
     {

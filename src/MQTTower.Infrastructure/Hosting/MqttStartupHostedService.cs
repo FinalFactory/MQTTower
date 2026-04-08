@@ -30,8 +30,8 @@ public sealed class MqttStartupHostedService : IHostedService
         try
         {
             await _mqtt.StartAsync(cancellationToken).ConfigureAwait(false);
-            _stats.Attach(_mqtt, cancellationToken);
-            _topics.Attach(_mqtt, cancellationToken);
+            await _stats.AttachAsync(_mqtt, cancellationToken).ConfigureAwait(false);
+            await _topics.AttachAsync(_mqtt, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

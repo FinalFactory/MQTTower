@@ -24,19 +24,17 @@ public sealed class TopicExplorerService : ITopicExplorerService
 
     public event EventHandler? Changed;
 
-    public void Attach(IMqttSubscriber subscriber, CancellationToken cancellationToken)
+    public async Task AttachAsync(IMqttSubscriber subscriber, CancellationToken cancellationToken)
     {
-        _ = subscriber.SubscribeAsync("#", OnMessageAsync, cancellationToken).ContinueWith(
-            t =>
-            {
-                if (t.IsFaulted)
-                {
-                    _logger.LogError(t.Exception!.GetBaseException(), "Topic explorer MQTT subscribe failed");
-                }
-            },
-            cancellationToken,
-            TaskContinuationOptions.None,
-            TaskScheduler.Default);
+        try
+        {
+            await subscriber.SubscribeAsync("#", OnMessageAsync, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Topic explorer MQTT subscribe failed");
+            throw;
+        }
     }
 
     private Task OnMessageAsync(MqttAppMessage msg)

@@ -7,7 +7,10 @@ public sealed class FakeMqttSubscriber : IMqttSubscriber
 {
     public Dictionary<string, Func<MqttAppMessage, Task>> Handlers { get; } = new(StringComparer.Ordinal);
 
-    public Task SubscribeAsync(string topicFilter, Func<MqttAppMessage, Task> handler, CancellationToken cancellationToken = default)
+    public Task SubscribeAsync(string topicFilter, Func<MqttAppMessage, Task> handler, CancellationToken cancellationToken = default) =>
+        SubscribeAsync(topicFilter, handler, 0, cancellationToken);
+
+    public Task SubscribeAsync(string topicFilter, Func<MqttAppMessage, Task> handler, int subscriptionQos, CancellationToken cancellationToken = default)
     {
         Handlers[topicFilter] = handler;
         return Task.CompletedTask;

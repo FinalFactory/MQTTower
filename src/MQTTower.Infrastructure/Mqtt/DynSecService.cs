@@ -64,20 +64,41 @@ public sealed class DynSecService : IDynSecService
         try
         {
             var json = JsonDocument.Parse(msg.Payload);
-            if (!json.RootElement.TryGetProperty("correlationData", out var corr))
+            var root = json.RootElement;
+
+            // Mosquitto wraps replies in { "responses": [ { "correlationData": "...", "data": { ... } }, ... ] }.
+            if (root.TryGetProperty("responses", out var responses) && responses.ValueKind == JsonValueKind.Array)
             {
+                foreach (var item in responses.EnumerateArray())
+                {
+                    if (!item.TryGetProperty("correlationData", out var corrEl))
+                    {
+                        continue;
+                    }
+
+                    var key = corrEl.GetString();
+                    if (string.IsNullOrEmpty(key))
+                    {
+                        continue;
+                    }
+
+                    if (_pending.TryRemove(key, out var tcs))
+                    {
+                        tcs.TrySetResult(item.Clone());
+                    }
+                }
+
                 return Task.CompletedTask;
             }
 
-            var key = corr.GetString();
-            if (string.IsNullOrEmpty(key))
+            // Single response / legacy shape with correlationData at root.
+            if (root.TryGetProperty("correlationData", out var corr))
             {
-                return Task.CompletedTask;
-            }
-
-            if (_pending.TryRemove(key, out var tcs))
-            {
-                tcs.TrySetResult(json.RootElement.Clone());
+                var key = corr.GetString();
+                if (!string.IsNullOrEmpty(key) && _pending.TryRemove(key, out var tcs))
+                {
+                    tcs.TrySetResult(root.Clone());
+                }
             }
         }
         catch (Exception ex)
@@ -97,8 +118,14 @@ public sealed class DynSecService : IDynSecService
 
         try
         {
+            // mosquitto_control_generic_callback expects root { "commands": [ ... ] }; correlationData is per-command
+            // (see control__generic_handle_commands in Mosquitto control_common.c), not on the envelope root.
             command["correlationData"] = correlation;
-            var payload = JsonSerializer.SerializeToUtf8Bytes(command);
+            var envelope = new JsonObject
+            {
+                ["commands"] = new JsonArray { command },
+            };
+            var payload = JsonSerializer.SerializeToUtf8Bytes(envelope);
 
             await _publisher.PublishAsync(_options.ControlTopic, payload, 1, false, cancellationToken).ConfigureAwait(false);
 
@@ -127,8 +154,13 @@ public sealed class DynSecService : IDynSecService
 
     public async Task<IReadOnlyList<MqttClientInfo>> ListClientsAsync(CancellationToken cancellationToken = default)
     {
-        var response = await SendCommandAsync(new JsonObject { ["command"] = "listClients" }, cancellationToken).ConfigureAwait(false);
-        if (!response.TryGetProperty("clients", out var clients) || clients.ValueKind != JsonValueKind.Array)
+        var response = await SendCommandAsync(
+            new JsonObject { ["command"] = "listClients", ["verbose"] = true },
+            cancellationToken).ConfigureAwait(false);
+        ThrowIfDynSecCommandError(response);
+        if (!response.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object
+            || !data.TryGetProperty("clients", out var clients)
+            || clients.ValueKind != JsonValueKind.Array)
         {
             return Array.Empty<MqttClientInfo>();
         }
@@ -150,8 +182,12 @@ public sealed class DynSecService : IDynSecService
 
     public async Task CreateClientAsync(string username, string password, IReadOnlyList<string>? roles, IReadOnlyList<string>? groups, CancellationToken cancellationToken = default)
     {
-        var roleItems = (roles ?? Array.Empty<string>()).Select(x => JsonValue.Create(x)).ToArray<JsonNode>();
-        var groupItems = (groups ?? Array.Empty<string>()).Select(x => JsonValue.Create(x)).ToArray<JsonNode>();
+        var roleItems = (roles ?? Array.Empty<string>())
+            .Select(r => (JsonNode)new JsonObject { ["rolename"] = r, ["priority"] = -1 })
+            .ToArray();
+        var groupItems = (groups ?? Array.Empty<string>())
+            .Select(g => (JsonNode)new JsonObject { ["groupname"] = g, ["priority"] = 1 })
+            .ToArray();
         await SendCommandAsync(new JsonObject
         {
             ["command"] = "createClient",
@@ -174,8 +210,13 @@ public sealed class DynSecService : IDynSecService
 
     public async Task<IReadOnlyList<MqttRole>> ListRolesAsync(CancellationToken cancellationToken = default)
     {
-        var response = await SendCommandAsync(new JsonObject { ["command"] = "listRoles" }, cancellationToken).ConfigureAwait(false);
-        if (!response.TryGetProperty("roles", out var roles) || roles.ValueKind != JsonValueKind.Array)
+        var response = await SendCommandAsync(
+            new JsonObject { ["command"] = "listRoles", ["verbose"] = true },
+            cancellationToken).ConfigureAwait(false);
+        ThrowIfDynSecCommandError(response);
+        if (!response.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object
+            || !data.TryGetProperty("roles", out var roles)
+            || roles.ValueKind != JsonValueKind.Array)
         {
             return Array.Empty<MqttRole>();
         }
@@ -238,8 +279,13 @@ public sealed class DynSecService : IDynSecService
 
     public async Task<IReadOnlyList<MqttGroup>> ListGroupsAsync(CancellationToken cancellationToken = default)
     {
-        var response = await SendCommandAsync(new JsonObject { ["command"] = "listGroups" }, cancellationToken).ConfigureAwait(false);
-        if (!response.TryGetProperty("groups", out var groups) || groups.ValueKind != JsonValueKind.Array)
+        var response = await SendCommandAsync(
+            new JsonObject { ["command"] = "listGroups", ["verbose"] = true },
+            cancellationToken).ConfigureAwait(false);
+        ThrowIfDynSecCommandError(response);
+        if (!response.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object
+            || !data.TryGetProperty("groups", out var groups)
+            || groups.ValueKind != JsonValueKind.Array)
         {
             return Array.Empty<MqttGroup>();
         }
@@ -261,14 +307,22 @@ public sealed class DynSecService : IDynSecService
             ["command"] = "createGroup",
             ["groupname"] = name,
             ["textname"] = description ?? string.Empty,
-            ["roles"] = new JsonArray(roleNames.Select(x => JsonValue.Create(x)).ToArray<JsonNode>()),
-            ["clients"] = new JsonArray(clientUsernames.Select(x => JsonValue.Create(x)).ToArray<JsonNode>()),
+            ["roles"] = new JsonArray(roleNames.Select(r => (JsonNode)new JsonObject { ["rolename"] = r, ["priority"] = 1 }).ToArray<JsonNode>()),
+            ["clients"] = new JsonArray(clientUsernames.Select(u => (JsonNode)new JsonObject { ["username"] = u, ["priority"] = 1 }).ToArray<JsonNode>()),
         }, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task DeleteGroupAsync(string name, CancellationToken cancellationToken = default)
     {
         await SendCommandAsync(new JsonObject { ["command"] = "deleteGroup", ["groupname"] = name }, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static void ThrowIfDynSecCommandError(JsonElement response)
+    {
+        if (response.TryGetProperty("error", out var err) && err.ValueKind == JsonValueKind.String)
+        {
+            throw new InvalidOperationException("DynSec command failed: " + err.GetString());
+        }
     }
 
     /// <summary>

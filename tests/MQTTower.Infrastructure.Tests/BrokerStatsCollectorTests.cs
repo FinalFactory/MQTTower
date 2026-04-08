@@ -14,7 +14,7 @@ public sealed class BrokerStatsCollectorTests
     {
         var collector = new BrokerStatsCollector(NullLogger<BrokerStatsCollector>.Instance);
         var sub = new FakeMqttSubscriber();
-        collector.Attach(sub, CancellationToken.None);
+        await collector.AttachAsync(sub, CancellationToken.None);
 
         var handler = sub.Handlers["$SYS/#"];
         await handler(new MqttAppMessage

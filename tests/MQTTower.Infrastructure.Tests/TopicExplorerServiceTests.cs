@@ -15,7 +15,7 @@ public sealed class TopicExplorerServiceTests
     {
         var svc = new TopicExplorerService(Microsoft.Extensions.Options.Options.Create(new MqttTowerOptions()), NullLogger<TopicExplorerService>.Instance);
         var sub = new FakeMqttSubscriber();
-        svc.Attach(sub, CancellationToken.None);
+        await svc.AttachAsync(sub, CancellationToken.None);
         var handler = sub.Handlers["#"];
         await handler(new MqttAppMessage { Topic = "home/living/temp", Payload = Encoding.UTF8.GetBytes("21") });
 

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using MQTTnet;
 using MQTTnet.Client;
+using MQTTnet.Formatter;
 using MQTTnet.Protocol;
 using MQTTower.Core.Interfaces;
 using MQTTower.Core.Mqtt;
@@ -49,9 +50,12 @@ public sealed class MqttConnectionService : IMqttPublisher, IMqttSubscriber, IAs
                 return;
             }
 
+            // MQTT 3.1.1 client id max 23 chars; avoid machine-name + truncate colliding (duplicate ids → session takeover).
+            var clientId = Guid.NewGuid().ToString("N")[..23];
             var builder = new MqttClientOptionsBuilder()
                 .WithTcpServer(_options.BrokerHost, _options.BrokerPort)
-                .WithClientId($"mqttower-{Environment.MachineName}-{Guid.NewGuid():N}"[..24])
+                .WithProtocolVersion(MqttProtocolVersion.V311)
+                .WithClientId(clientId)
                 .WithCleanSession();
             if (!string.IsNullOrWhiteSpace(_options.BrokerUsername))
             {
@@ -133,11 +137,19 @@ public sealed class MqttConnectionService : IMqttPublisher, IMqttSubscriber, IAs
         await StartAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task SubscribeAsync(string topicFilter, Func<MqttAppMessage, Task> handler, CancellationToken cancellationToken = default)
+    public Task SubscribeAsync(string topicFilter, Func<MqttAppMessage, Task> handler, CancellationToken cancellationToken = default) =>
+        SubscribeAsync(topicFilter, handler, 0, cancellationToken);
+
+    public async Task SubscribeAsync(string topicFilter, Func<MqttAppMessage, Task> handler, int subscriptionQos, CancellationToken cancellationToken = default)
     {
         if (_disposed)
         {
             throw new ObjectDisposedException(nameof(MqttConnectionService));
+        }
+
+        if (subscriptionQos is < 0 or > 2)
+        {
+            throw new ArgumentOutOfRangeException(nameof(subscriptionQos), subscriptionQos, "Subscription QoS must be 0, 1, or 2.");
         }
 
         _handlers.AddOrUpdate(topicFilter, _ => new List<Func<MqttAppMessage, Task>> { handler }, (_, list) =>
@@ -154,7 +166,12 @@ public sealed class MqttConnectionService : IMqttPublisher, IMqttSubscriber, IAs
 
         if (_brokerSubscribedFilters.TryAdd(topicFilter, 0))
         {
-            await _client.SubscribeAsync(new MqttTopicFilterBuilder().WithTopic(topicFilter).Build(), cancellationToken).ConfigureAwait(false);
+            await _client.SubscribeAsync(
+                new MqttTopicFilterBuilder()
+                    .WithTopic(topicFilter)
+                    .WithQualityOfServiceLevel((MqttQualityOfServiceLevel)subscriptionQos)
+                    .Build(),
+                cancellationToken).ConfigureAwait(false);
         }
     }
 
