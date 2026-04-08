@@ -112,6 +112,10 @@ public sealed class MosquittoFixture : IAsyncLifetime
         // Mosquitto 2.1+ assigns dynsec roles (super-admin, sys-observe, …) to admin but not the stock "client"
         // role, which carries publishClientSend on "#" for application topics. Attach that role to admin.
         await EnsureAdminCanPublishApplicationTopicsAsync().ConfigureAwait(false);
+
+        // mosquitto opens files with explicit mode (e.g. 0640 for logs); umask cannot widen that.
+        // Make all data/log files world-readable so the host runner can read bind-mounted files.
+        await _container.ExecAsync(new[] { "/bin/sh", "-c", "chmod -R a+rw /mosquitto/data /mosquitto/log" }).ConfigureAwait(false);
     }
 
     private async Task EnsureAdminCanPublishApplicationTopicsAsync()
