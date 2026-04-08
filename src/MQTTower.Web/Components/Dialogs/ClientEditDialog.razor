@@ -28,7 +28,7 @@
         try
         {
             await BrokerGatewayHelper.WithGatewayAsync(GatewayFactory, BrokerCtx.Selected, async gw =>
-                await gw.CreateClientAsync(_username, _password, null, null).ConfigureAwait(false)).ConfigureAwait(false);
+                await gw.CreateClientAsync(_username, _password, null, null));
             MudDialog.Close(DialogResult.Ok(true));
         }
         catch (Exception ex)

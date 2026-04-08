@@ -31,7 +31,7 @@
         var roles = Split(_rolesCsv);
         var clients = Split(_clientsCsv);
         await BrokerGatewayHelper.WithGatewayAsync(GatewayFactory, BrokerCtx.Selected, async gw =>
-            await gw.CreateGroupAsync(_name, _description, roles, clients).ConfigureAwait(false)).ConfigureAwait(false);
+            await gw.CreateGroupAsync(_name, _description, roles, clients));
         MudDialog.Close(DialogResult.Ok(true));
     }
 

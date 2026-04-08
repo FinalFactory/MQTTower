@@ -54,7 +54,7 @@
     private async Task SaveAsync()
     {
         await BrokerGatewayHelper.WithGatewayAsync(GatewayFactory, BrokerCtx.Selected, async gw =>
-            await gw.CreateRoleAsync(_name, _description, _acls).ConfigureAwait(false)).ConfigureAwait(false);
+            await gw.CreateRoleAsync(_name, _description, _acls));
         MudDialog.Close(DialogResult.Ok(true));
     }
 }
