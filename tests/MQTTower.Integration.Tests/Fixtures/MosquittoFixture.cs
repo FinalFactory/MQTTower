@@ -90,7 +90,8 @@ public sealed class MosquittoFixture : IAsyncLifetime
     private async Task EnsureAdminCanPublishApplicationTopicsAsync()
     {
         var jsonPath = Path.Combine(_hostRoot, "data", "dynamic-security.json");
-        await WaitForFileExistsAsync(jsonPath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        // CI (e.g. GitHub Actions + Docker) can delay host visibility of bind-mounted files after the broker is up.
+        await WaitForDynSecJsonOnHostAsync(jsonPath, TimeSpan.FromSeconds(90)).ConfigureAwait(false);
 
         const string applicationPublishRole = "client";
 
@@ -329,6 +330,46 @@ public sealed class MosquittoFixture : IAsyncLifetime
 
             await Task.Delay(50).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// Waits until <c>dynamic-security.json</c> is visible on the host mount. Also probes the container so we keep
+    /// polling when the file exists inside Docker but the host path lags (common under load on CI).
+    /// </summary>
+    private async Task WaitForDynSecJsonOnHostAsync(string hostJsonPath, TimeSpan timeout)
+    {
+        const string containerPath = "/mosquitto/data/dynamic-security.json";
+        var start = DateTime.UtcNow;
+        while (DateTime.UtcNow - start < timeout)
+        {
+            if (File.Exists(hostJsonPath))
+            {
+                return;
+            }
+
+            var inContainer = await _container.ExecAsync(new[] { "test", "-f", containerPath }).ConfigureAwait(false);
+            if (inContainer.ExitCode != 0)
+            {
+                await Task.Delay(200).ConfigureAwait(false);
+                continue;
+            }
+
+            // File exists in the container; wait for the bind mount to show it on the host.
+            for (var i = 0; i < 200 && !File.Exists(hostJsonPath); i++)
+            {
+                await Task.Delay(100).ConfigureAwait(false);
+            }
+
+            if (File.Exists(hostJsonPath))
+            {
+                return;
+            }
+
+            await Task.Delay(200).ConfigureAwait(false);
+        }
+
+        throw new InvalidOperationException(
+            $"Timed out waiting for host file {hostJsonPath}. Bind mount may not be syncing; container path {containerPath} was checked.");
     }
 
     /// <summary>Waits until the mapped host port accepts TCP (broker listening after restart).</summary>
