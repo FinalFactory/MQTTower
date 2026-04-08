@@ -31,7 +31,8 @@ public sealed class DynSecApiController : ControllerBase
         var gw = _gatewayFactory.Create(broker);
         try
         {
-            return Ok(await gw.ListClientsAsync(cancellationToken).ConfigureAwait(false));
+            var list = await gw.ListClientsAsync(cancellationToken).ConfigureAwait(false);
+            return Ok(list.ToList());
         }
         finally
         {
@@ -51,7 +52,8 @@ public sealed class DynSecApiController : ControllerBase
         var gw = _gatewayFactory.Create(broker);
         try
         {
-            return Ok(await gw.ListRolesAsync(cancellationToken).ConfigureAwait(false));
+            var list = await gw.ListRolesAsync(cancellationToken).ConfigureAwait(false);
+            return Ok(list.ToList());
         }
         finally
         {
@@ -71,7 +73,8 @@ public sealed class DynSecApiController : ControllerBase
         var gw = _gatewayFactory.Create(broker);
         try
         {
-            return Ok(await gw.ListGroupsAsync(cancellationToken).ConfigureAwait(false));
+            var list = await gw.ListGroupsAsync(cancellationToken).ConfigureAwait(false);
+            return Ok(list.ToList());
         }
         finally
         {

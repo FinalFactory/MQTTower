@@ -37,7 +37,15 @@
 
     private async Task ReloadAsync()
     {
-        _brokers = (await Registry.ListAsync().ConfigureAwait(false)).Where(x => x.Approved).OrderBy(x => x.Name).ToList();
+        try
+        {
+            _brokers = (await Registry.ListAsync().ConfigureAwait(false)).Where(x => x.Approved).OrderBy(x => x.Name).ToList();
+        }
+        catch
+        {
+            _brokers = new List<BrokerProfile>();
+        }
+
         _selectedId = BrokerCtx.Selected?.Id;
     }
 

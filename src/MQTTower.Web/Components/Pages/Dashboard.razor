@@ -326,6 +326,31 @@ else
 
     private async Task LoadAsync()
     {
+        try
+        {
+            await LoadCoreAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            _allBrokers = new List<BrokerProfile>();
+            _brokerSummaries = Array.Empty<BrokerSummaryRow>();
+            _aggTotalClients = 0;
+            _aggTotalMps = 0;
+            _aggOnlineBrokers = 0;
+            _stats = new BrokerStats();
+            _clients = new List<MqttClientInfo>();
+            _lineLabels = Array.Empty<string>();
+            _lineSeries = new List<ChartSeries<double>>();
+            _lineOptions = new ChartOptions();
+            _donutLabels = Array.Empty<string>();
+            _donutData = Array.Empty<double>();
+            _donutOptions = new ChartOptions();
+            _recent = new List<AuditEntry>();
+        }
+    }
+
+    private async Task LoadCoreAsync()
+    {
         _allBrokers = (await Registry.ListAsync().ConfigureAwait(false)).Where(x => x.Approved).ToList();
 
         var to = DateTimeOffset.UtcNow;
