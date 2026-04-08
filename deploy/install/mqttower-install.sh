@@ -43,6 +43,25 @@ rand_hex() {
   openssl rand -hex 16 2>/dev/null || head -c 16 /dev/urandom | xxd -p
 }
 
+# Unprivileged LXC: systemctl enable may fail with EPERM when creating unit symlinks; start often works.
+systemctl_enable_now_best_effort() {
+  local svc="$1"
+  if systemctl enable -q --now "$svc" 2>/dev/null; then
+    return 0
+  fi
+  msg_info "systemctl enable --now failed for ${svc}; trying start only (common in unprivileged LXC)."
+  systemctl daemon-reload 2>/dev/null || true
+  if systemctl start "$svc" 2>/dev/null && systemctl is-active --quiet "$svc" 2>/dev/null; then
+    return 0
+  fi
+  if command -v service >/dev/null 2>&1 && service "$svc" start 2>/dev/null; then
+    systemctl is-active --quiet "$svc" 2>/dev/null && return 0
+    pgrep -x mosquitto >/dev/null 2>&1 && [[ "$svc" == "mosquitto" ]] && return 0
+  fi
+  msg_error "Could not start ${svc}. See: journalctl -xeu ${svc}"
+  return 1
+}
+
 # Append KEY=VALUE to file only if KEY is not already present (safe re-runs / new version keys).
 ensure_env_key() {
   local file="$1" key="$2" value="$3"
@@ -281,8 +300,8 @@ install_broker_stack() {
   write_agent_env
   write_agent_systemd
 
-  systemctl enable -q --now mosquitto
-  systemctl enable -q --now mqttower-agent
+  systemctl_enable_now_best_effort mosquitto
+  systemctl_enable_now_best_effort mqttower-agent
 }
 
 all_dashboard_env_preset() {
@@ -397,7 +416,8 @@ install_dashboard_stack() {
   prepare_data_dir
   write_web_env
   write_web_systemd
-  systemctl enable -q --now mqttower
+  systemctl daemon-reload 2>/dev/null || true
+  systemctl_enable_now_best_effort mqttower
 }
 
 install_fullstack() {
@@ -436,9 +456,10 @@ install_fullstack() {
   write_web_env
   write_web_systemd
 
-  systemctl enable -q --now mosquitto
-  systemctl enable -q --now mqttower-agent
-  systemctl enable -q --now mqttower
+  systemctl daemon-reload 2>/dev/null || true
+  systemctl_enable_now_best_effort mosquitto
+  systemctl_enable_now_best_effort mqttower-agent
+  systemctl_enable_now_best_effort mqttower
 }
 
 write_mqttower_update_command() {
