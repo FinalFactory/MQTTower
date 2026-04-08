@@ -356,23 +356,29 @@ public sealed class MosquittoFixture : IAsyncLifetime
             $"Container stderr (tail): {logTail}");
     }
 
-    /// <summary>Reads DynSec JSON from the host bind mount when present; otherwise from the container (CI bind mount quirks).</summary>
-    private async Task<string> ReadDynSecJsonTextAsync(string hostJsonPath)
+    /// <summary>Reads DynSec JSON via container exec (avoids host UID permission issues on Linux CI).</summary>
+    private async Task<string> ReadDynSecJsonTextAsync(string _)
     {
-        if (File.Exists(hostJsonPath))
-        {
-            return await File.ReadAllTextAsync(hostJsonPath).ConfigureAwait(false);
-        }
-
         const string containerPath = "/mosquitto/data/dynamic-security.json";
         var cat = await _container.ExecAsync(new[] { "/bin/sh", "-c", $"cat {containerPath}" }).ConfigureAwait(false);
         if (cat.ExitCode != 0)
         {
             throw new InvalidOperationException(
-                $"Could not read dynamic-security.json (host path missing and container cat failed). Stderr: {cat.Stderr}");
+                $"Could not read dynamic-security.json via container cat. Stderr: {cat.Stderr}");
         }
 
         return cat.Stdout;
+    }
+
+    /// <summary>Writes content to a container file via base64 pipe (avoids host UID permission issues).</summary>
+    private async Task WriteFileInContainerAsync(string containerPath, string content)
+    {
+        var base64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(content));
+        var r = await _container.ExecAsync(new[] { "/bin/sh", "-c", $"echo '{base64}' | base64 -d > {containerPath}" }).ConfigureAwait(false);
+        if (r.ExitCode != 0)
+        {
+            throw new InvalidOperationException($"Failed to write {containerPath} in container. Stderr: {r.Stderr}");
+        }
     }
 
     /// <summary>Waits until the mapped host port accepts TCP (broker listening after restart).</summary>
@@ -421,20 +427,14 @@ public sealed class MosquittoFixture : IAsyncLifetime
 
         var roles = adminNode["roles"] as JsonArray ?? new JsonArray();
         adminNode["roles"] = roles;
-        if (roles.Any(n => n is JsonObject ro && ro["rolename"]?.GetValue<string>() == rolenameToAdd))
+        var alreadyPresent = roles.Any(n => n is JsonObject ro && ro["rolename"]?.GetValue<string>() == rolenameToAdd);
+        if (!alreadyPresent)
         {
-            await File.WriteAllTextAsync(
-                    dynamicSecurityJsonPath,
-                    root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }))
-                .ConfigureAwait(false);
-            return;
+            roles.Add(new JsonObject { ["rolename"] = rolenameToAdd });
         }
 
-        roles.Add(new JsonObject { ["rolename"] = rolenameToAdd });
-        await File.WriteAllTextAsync(
-                dynamicSecurityJsonPath,
-                root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }))
-            .ConfigureAwait(false);
+        var patched = root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+        await WriteFileInContainerAsync("/mosquitto/data/dynamic-security.json", patched).ConfigureAwait(false);
     }
 
     private static bool LooksLikeDuplicateAclMessage(string text) =>
