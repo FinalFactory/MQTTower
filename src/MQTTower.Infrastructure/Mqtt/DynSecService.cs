@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using MQTTower.Core.Interfaces;
 using MQTTower.Core.Models;
 using MqttAppMessage = MQTTower.Core.Mqtt.MqttAppMessage;
@@ -84,7 +85,7 @@ public sealed class DynSecService : IDynSecService
         return Task.CompletedTask;
     }
 
-    private async Task<JsonElement> SendCommandAsync(object command, CancellationToken cancellationToken)
+    private async Task<JsonElement> SendCommandAsync(JsonObject command, CancellationToken cancellationToken)
     {
         await EnsureResponseSubscriptionAsync(cancellationToken).ConfigureAwait(false);
         var correlation = Guid.NewGuid().ToString("N");
@@ -93,18 +94,10 @@ public sealed class DynSecService : IDynSecService
 
         try
         {
-            var payload = JsonSerializer.SerializeToUtf8Bytes(command, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
-            using var doc = JsonDocument.Parse(payload);
-            var dict = new Dictionary<string, JsonElement>();
-            foreach (var p in doc.RootElement.EnumerateObject())
-            {
-                dict[p.Name] = p.Value.Clone();
-            }
+            command["correlationData"] = correlation;
+            var payload = JsonSerializer.SerializeToUtf8Bytes(command);
 
-            dict["correlationData"] = JsonSerializer.SerializeToElement(correlation);
-            var merged = JsonSerializer.SerializeToUtf8Bytes(dict);
-
-            await _publisher.PublishAsync(_options.ControlTopic, merged, 1, false, cancellationToken).ConfigureAwait(false);
+            await _publisher.PublishAsync(_options.ControlTopic, payload, 1, false, cancellationToken).ConfigureAwait(false);
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             cts.CancelAfter(TimeSpan.FromSeconds(15));
@@ -130,7 +123,7 @@ public sealed class DynSecService : IDynSecService
 
     public async Task<IReadOnlyList<MqttClientInfo>> ListClientsAsync(CancellationToken cancellationToken = default)
     {
-        var response = await SendCommandAsync(new { command = "listClients" }, cancellationToken).ConfigureAwait(false);
+        var response = await SendCommandAsync(new JsonObject { ["command"] = "listClients" }, cancellationToken).ConfigureAwait(false);
         if (!response.TryGetProperty("clients", out var clients) || clients.ValueKind != JsonValueKind.Array)
         {
             return Array.Empty<MqttClientInfo>();
@@ -153,29 +146,31 @@ public sealed class DynSecService : IDynSecService
 
     public async Task CreateClientAsync(string username, string password, IReadOnlyList<string>? roles, IReadOnlyList<string>? groups, CancellationToken cancellationToken = default)
     {
-        await SendCommandAsync(new
+        var roleItems = (roles ?? Array.Empty<string>()).Select(x => JsonValue.Create(x)).ToArray<JsonNode>();
+        var groupItems = (groups ?? Array.Empty<string>()).Select(x => JsonValue.Create(x)).ToArray<JsonNode>();
+        await SendCommandAsync(new JsonObject
         {
-            command = "createClient",
-            username,
-            password,
-            roles = roles ?? Array.Empty<string>(),
-            groups = groups ?? Array.Empty<string>(),
+            ["command"] = "createClient",
+            ["username"] = username,
+            ["password"] = password,
+            ["roles"] = new JsonArray(roleItems),
+            ["groups"] = new JsonArray(groupItems),
         }, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task DeleteClientAsync(string username, CancellationToken cancellationToken = default)
     {
-        await SendCommandAsync(new { command = "deleteClient", username }, cancellationToken).ConfigureAwait(false);
+        await SendCommandAsync(new JsonObject { ["command"] = "deleteClient", ["username"] = username }, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task SetClientEnabledAsync(string username, bool enabled, CancellationToken cancellationToken = default)
     {
-        await SendCommandAsync(new { command = enabled ? "enableClient" : "disableClient", username }, cancellationToken).ConfigureAwait(false);
+        await SendCommandAsync(new JsonObject { ["command"] = enabled ? "enableClient" : "disableClient", ["username"] = username }, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<MqttRole>> ListRolesAsync(CancellationToken cancellationToken = default)
     {
-        var response = await SendCommandAsync(new { command = "listRoles" }, cancellationToken).ConfigureAwait(false);
+        var response = await SendCommandAsync(new JsonObject { ["command"] = "listRoles" }, cancellationToken).ConfigureAwait(false);
         if (!response.TryGetProperty("roles", out var roles) || roles.ValueKind != JsonValueKind.Array)
         {
             return Array.Empty<MqttRole>();
@@ -194,24 +189,25 @@ public sealed class DynSecService : IDynSecService
     public async Task CreateRoleAsync(string name, string? description, IReadOnlyList<AclEntry> acls, CancellationToken cancellationToken = default)
     {
         var flat = ExpandAclEntries(acls);
-        await SendCommandAsync(new
+        var aclItems = flat.Select(a => (JsonNode)new JsonObject
         {
-            command = "createRole",
-            rolename = name,
-            textname = description ?? string.Empty,
-            acls = flat.Select(a => new
+            ["acltype"] = a.AclType switch
             {
-                acltype = a.AclType switch
-                {
-                    AclType.Publish => "publishClientSend",
-                    AclType.Subscribe => "subscribePattern",
-                    AclType.PublishSubscribe => "publishClientSend",
-                    _ => "publishClientSend",
-                },
-                topic = a.TopicPattern,
-                priority = a.Priority,
-                allow = a.Allow,
-            }),
+                AclType.Publish => "publishClientSend",
+                AclType.Subscribe => "subscribePattern",
+                AclType.PublishSubscribe => "publishClientSend",
+                _ => "publishClientSend",
+            },
+            ["topic"] = a.TopicPattern,
+            ["priority"] = a.Priority,
+            ["allow"] = a.Allow,
+        }).ToArray();
+        await SendCommandAsync(new JsonObject
+        {
+            ["command"] = "createRole",
+            ["rolename"] = name,
+            ["textname"] = description ?? string.Empty,
+            ["acls"] = new JsonArray(aclItems),
         }, cancellationToken).ConfigureAwait(false);
     }
 
@@ -233,12 +229,12 @@ public sealed class DynSecService : IDynSecService
 
     public async Task DeleteRoleAsync(string name, CancellationToken cancellationToken = default)
     {
-        await SendCommandAsync(new { command = "deleteRole", rolename = name }, cancellationToken).ConfigureAwait(false);
+        await SendCommandAsync(new JsonObject { ["command"] = "deleteRole", ["rolename"] = name }, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<MqttGroup>> ListGroupsAsync(CancellationToken cancellationToken = default)
     {
-        var response = await SendCommandAsync(new { command = "listGroups" }, cancellationToken).ConfigureAwait(false);
+        var response = await SendCommandAsync(new JsonObject { ["command"] = "listGroups" }, cancellationToken).ConfigureAwait(false);
         if (!response.TryGetProperty("groups", out var groups) || groups.ValueKind != JsonValueKind.Array)
         {
             return Array.Empty<MqttGroup>();
@@ -256,18 +252,18 @@ public sealed class DynSecService : IDynSecService
 
     public async Task CreateGroupAsync(string name, string? description, IReadOnlyList<string> roleNames, IReadOnlyList<string> clientUsernames, CancellationToken cancellationToken = default)
     {
-        await SendCommandAsync(new
+        await SendCommandAsync(new JsonObject
         {
-            command = "createGroup",
-            groupname = name,
-            textname = description ?? string.Empty,
-            roles = roleNames,
-            clients = clientUsernames,
+            ["command"] = "createGroup",
+            ["groupname"] = name,
+            ["textname"] = description ?? string.Empty,
+            ["roles"] = new JsonArray(roleNames.Select(x => JsonValue.Create(x)).ToArray<JsonNode>()),
+            ["clients"] = new JsonArray(clientUsernames.Select(x => JsonValue.Create(x)).ToArray<JsonNode>()),
         }, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task DeleteGroupAsync(string name, CancellationToken cancellationToken = default)
     {
-        await SendCommandAsync(new { command = "deleteGroup", groupname = name }, cancellationToken).ConfigureAwait(false);
+        await SendCommandAsync(new JsonObject { ["command"] = "deleteGroup", ["groupname"] = name }, cancellationToken).ConfigureAwait(false);
     }
 }
