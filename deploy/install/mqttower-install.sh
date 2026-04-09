@@ -198,6 +198,42 @@ init_dynsec() {
   msg_ok "DynSec initialized at ${ds}"
 }
 
+# Mosquitto's stock `dynsec init` admin role can subscribe/receive on `#` but does not grant
+# publishClientSend on `#` (only on $CONTROL/dynamic-security/#). The MQTTower agent then cannot
+# publish application topics (schedulers, HTTP /api/mqtt/publish, etc.), and self-published tests
+# never appear in Topic Explorer. Add publish on `#` for admin, plus a template mqttower-app role
+# for general clients (DynSec control topics denied).
+seed_mqttower_dynsec_roles() {
+  local ds="/var/lib/mosquitto/dynamic-security.json"
+  [[ -f "$ds" ]] || return 0
+  need_cmd mosquitto_ctrl || return 0
+
+  if mosquitto_ctrl -f "$ds" dynsec addRoleACL admin publishClientSend '#' allow 2>/dev/null; then
+    msg_ok "DynSec: admin can publish to application topics (#)"
+  else
+    msg_info "DynSec: admin publishClientSend # not added (already present or mosquitto_ctrl error)"
+  fi
+
+  if mosquitto_ctrl -f "$ds" dynsec getRole mqttower-app >/dev/null 2>&1; then
+    msg_info "DynSec: role mqttower-app already exists"
+  elif mosquitto_ctrl -f "$ds" dynsec createRole mqttower-app >/dev/null 2>&1; then
+    msg_ok "DynSec: created role mqttower-app (assign to app clients in the dashboard)"
+    local ctl='$CONTROL/dynamic-security/#'
+    mosquitto_ctrl -f "$ds" dynsec addRoleACL mqttower-app publishClientSend "$ctl" deny 100 2>/dev/null || true
+    mosquitto_ctrl -f "$ds" dynsec addRoleACL mqttower-app subscribePattern "$ctl" deny 100 2>/dev/null || true
+    mosquitto_ctrl -f "$ds" dynsec addRoleACL mqttower-app publishClientReceive "$ctl" deny 100 2>/dev/null || true
+    mosquitto_ctrl -f "$ds" dynsec addRoleACL mqttower-app publishClientSend '#' allow 0 2>/dev/null || true
+    mosquitto_ctrl -f "$ds" dynsec addRoleACL mqttower-app subscribePattern '#' allow 0 2>/dev/null || true
+    mosquitto_ctrl -f "$ds" dynsec addRoleACL mqttower-app publishClientReceive '#' allow 0 2>/dev/null || true
+    mosquitto_ctrl -f "$ds" dynsec addRoleACL mqttower-app unsubscribePattern '#' allow 0 2>/dev/null || true
+    msg_ok "DynSec: mqttower-app ACLs (full app MQTT; DynSec control denied)"
+  else
+    msg_warn "DynSec: could not create mqttower-app role (see mosquitto_ctrl output)"
+  fi
+
+  chown mosquitto:mosquitto "$ds" 2>/dev/null || true
+}
+
 write_mosquitto_conf() {
   local port="$1"
   local conf="/etc/mosquitto/conf.d/mqttower.conf"
@@ -392,6 +428,7 @@ install_broker_stack() {
   fi
 
   init_dynsec
+  seed_mqttower_dynsec_roles
 
   fetch_and_deploy_gh_release "mqttower-agent" "${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}" "prebuild" "latest" "${INSTALL_DIR_AGENT}" "${ASSET_AGENT}"
   verify_mqttower_agent_binaries
@@ -550,6 +587,7 @@ install_fullstack() {
   MQTTOWER_WATCHER_NOTIFY_SECRET="${MQTTOWER_WATCHER_NOTIFY_SECRET:-${MQTTOWER_API_KEY}}"
 
   init_dynsec
+  seed_mqttower_dynsec_roles
 
   fetch_and_deploy_gh_release "mqttower-agent" "${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}" "prebuild" "latest" "${INSTALL_DIR_AGENT}" "${ASSET_AGENT}"
   verify_mqttower_agent_binaries

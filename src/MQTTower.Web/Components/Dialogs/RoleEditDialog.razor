@@ -3,32 +3,93 @@
 @inject BrokerContext BrokerCtx
 @inject ISnackbar Snackbar
 
-<MudDialog>
+<MudDialog Class="role-edit-dialog">
     <DialogContent>
         @if (_loading)
         {
             <MudProgressLinear Indeterminate="true" Class="mb-2" />
         }
-        <MudTextField @bind-Value="_name" Label="Role name" Variant="Variant.Outlined" Class="mb-2" Required="true" Disabled="@IsEdit" />
-        <MudTextField @bind-Value="_description" Label="Description" Variant="Variant.Outlined" Class="mb-2" Disabled="@IsEdit" HelperText="@(IsEdit ? "Description changes require Mosquitto modifyRole (not wired)." : null)" />
-        <MudText Typo="Typo.subtitle2" Class="mb-2">ACL entries</MudText>
-        @for (var i = 0; i < _acls.Count; i++)
-        {
-            var idx = i;
-            <MudPaper Class="pa-2 mb-2" Outlined="true">
-                <MudTextField @bind-Value="_acls[idx].TopicPattern" Label="Topic pattern" Variant="Variant.Outlined" Class="mb-2" />
-                <MudSelect T="AclType" @bind-Value="_acls[idx].AclType" Label="Type" Variant="Variant.Outlined" Class="mb-2">
-                    @foreach (var t in Enum.GetValues<AclType>())
-                    {
-                        <MudSelectItem Value="@t">@t</MudSelectItem>
-                    }
-                </MudSelect>
-                <MudNumericField T="int" @bind-Value="_acls[idx].Priority" Label="Priority" Variant="Variant.Outlined" Class="mb-2" />
-                <MudSwitch @bind-Value="_acls[idx].Allow" Color="Color.Primary" Label="Allow" Class="mb-2" />
-                <MudButton Size="Size.Small" OnClick="@(() => RemoveAcl(idx))">Remove</MudButton>
-            </MudPaper>
-        }
-        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Add" OnClick="AddAcl">Add ACL</MudButton>
+        <MudStack Spacing="2">
+            <MudText Typo="Typo.body2" Class="mqtt-muted">
+                A role defines which MQTT topics clients with this role may publish to or subscribe to. Assign roles to clients or groups on the Clients and Groups pages.
+            </MudText>
+
+            <MudTextField @bind-Value="_name" Label="Role name" Variant="Variant.Outlined" Required="true" Disabled="@IsEdit" />
+
+            @if (!IsEdit)
+            {
+                <MudTextField @bind-Value="_description" Label="Description (optional)" Variant="Variant.Outlined" Lines="2" />
+            }
+
+            @if (!IsEdit)
+            {
+                <MudText Typo="Typo.subtitle2">Start from a template</MudText>
+                <MudButtonGroup Color="Color.Primary" Variant="Variant.Outlined" Class="flex-wrap">
+                    <MudButton Variant="@TemplateVariant(RoleTemplateKind.FullAccess)" OnClick="@(() => ApplyTemplate(RoleTemplateKind.FullAccess))">Full access</MudButton>
+                    <MudButton Variant="@TemplateVariant(RoleTemplateKind.ReadOnly)" OnClick="@(() => ApplyTemplate(RoleTemplateKind.ReadOnly))">Read-only</MudButton>
+                    <MudButton Variant="@TemplateVariant(RoleTemplateKind.TopicScoped)" OnClick="@(() => ApplyTemplate(RoleTemplateKind.TopicScoped))">Topic-scoped</MudButton>
+                    <MudButton Variant="@TemplateVariant(RoleTemplateKind.Custom)" OnClick="@(() => ApplyTemplate(RoleTemplateKind.Custom))">Custom</MudButton>
+                </MudButtonGroup>
+                @if (_template == RoleTemplateKind.TopicScoped)
+                {
+                    <MudTextField @bind-Value="_topicPrefix"
+                                  Label="Topic prefix"
+                                  Variant="Variant.Outlined"
+                                  HelperText="We will allow pub/sub under {prefix}/#. Use devices or home/livingroom — not a trailing slash."
+                                  Adornment="Adornment.End"
+                                  AdornmentIcon="@Icons.Material.Filled.Folder"
+                                  OnBlur="@OnTopicPrefixBlur" />
+                }
+            }
+
+            <MudText Typo="Typo.subtitle2" Class="mt-2">Permissions</MudText>
+            <MudExpansionPanels Elevation="0" Class="mud-paper-outlined mb-2">
+                <MudExpansionPanel Text="Topic pattern syntax (wildcards)">
+                    <MudList T="string" Dense="true">
+                        <MudListItem><strong>#</strong> — all topics (multi-level wildcard)</MudListItem>
+                        <MudListItem><strong>devices/#</strong> — anything under devices/</MudListItem>
+                        <MudListItem><strong>sensors/+/temperature</strong> — + matches one segment</MudListItem>
+                        <MudListItem><strong>home/livingroom/light</strong> — exact topic</MudListItem>
+                    </MudList>
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+
+            <MudSwitch @bind-Value="_showAdvanced" Color="Color.Primary" Label="Show advanced (priority per rule)" Class="mb-1" />
+
+            @for (var i = 0; i < _rows.Count; i++)
+            {
+                var idx = i;
+                <MudPaper Class="pa-2 mb-2" Outlined="true" @key="@idx">
+                    <MudStack Spacing="2">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                            <MudTextField @bind-Value="_rows[idx].TopicPattern"
+                                          Label="Topic pattern"
+                                          Variant="Variant.Outlined"
+                                          Style="flex:1"
+                                          Required="true" />
+                            <MudTooltip Text="Use # for all topics, or a path like devices/#. See wildcards above.">
+                                <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" aria-label="Topic pattern help" />
+                            </MudTooltip>
+                        </MudStack>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap">
+                            <MudCheckBox T="bool" Value="_rows[idx].CanPublish" ValueChanged="@(v => OnPublishChanged(idx, v))" Label="Can publish (send messages)" Color="Color.Primary" Dense="true" />
+                            <MudCheckBox T="bool" Value="_rows[idx].CanSubscribe" ValueChanged="@(v => OnSubscribeChanged(idx, v))" Label="Can subscribe (receive messages)" Color="Color.Primary" Dense="true" />
+                        </MudStack>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudSwitch T="bool" Value="_rows[idx].Allow" ValueChanged="@(v => OnAllowChanged(idx, v))" Color="Color.Primary" Label="@(_rows[idx].Allow ? "Allow" : "Deny")" />
+                            <MudText Typo="Typo.caption" Class="mqtt-muted">Deny rules with higher priority can override broader allow rules.</MudText>
+                        </MudStack>
+                        @if (_showAdvanced)
+                        {
+                            <MudNumericField T="int" @bind-Value="_rows[idx].Priority" Label="Priority" Variant="Variant.Outlined" HelperText="Higher numbers are evaluated first." />
+                        }
+                        <MudButton Size="Size.Small" OnClick="@(() => RemoveRow(idx))">Remove</MudButton>
+                    </MudStack>
+                </MudPaper>
+            }
+
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Add" OnClick="AddRow">Add permission</MudButton>
+        </MudStack>
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="Cancel">Cancel</MudButton>
@@ -37,6 +98,14 @@
 </MudDialog>
 
 @code {
+    private enum RoleTemplateKind
+    {
+        FullAccess,
+        ReadOnly,
+        TopicScoped,
+        Custom,
+    }
+
     [CascadingParameter]
     private IMudDialogInstance MudDialog { get; set; } = default!;
 
@@ -47,10 +116,13 @@
 
     private string _name = string.Empty;
     private string _description = string.Empty;
-    private List<AclEntry> _acls = new() { new() { TopicPattern = "#", AclType = AclType.PublishSubscribe, Allow = true } };
+    private string _topicPrefix = "devices";
+    private List<AclPermissionRow> _rows = new();
+    private RoleTemplateKind _template = RoleTemplateKind.FullAccess;
     private List<AclEntry> _originalExpanded = new();
     private bool _loading = true;
     private bool _saving;
+    private bool _showAdvanced;
 
     protected override async Task OnInitializedAsync()
     {
@@ -65,36 +137,163 @@
                     new MqttRole { Name = EditRoleName! });
                 _name = role.Name;
                 _description = role.Description ?? string.Empty;
-                _acls = role.Acls.Count > 0
-                    ? role.Acls.Select(CloneAcl).ToList()
-                    : new List<AclEntry>();
-                _originalExpanded = ExpandAclFlat(_acls).Select(CloneAcl).ToList();
+                _rows = AclPermissionRow.FromAclEntries(role.Acls);
+                if (_rows.Count == 0 && role.Acls.Count > 0)
+                {
+                    Snackbar.Add("Some ACL entries could not be shown in the simplified editor.", Severity.Warning);
+                }
+
+                _originalExpanded = AclPermissionRow.FlattenForDiff(role.Acls).ToList();
             }
             catch (Exception ex)
             {
                 Snackbar.Add(ex.Message, Severity.Error);
             }
         }
+        else
+        {
+            ApplyTemplate(RoleTemplateKind.FullAccess);
+            _originalExpanded = new List<AclEntry>();
+        }
 
         _loading = false;
     }
 
-    private static AclEntry CloneAcl(AclEntry a) =>
-        new()
-        {
-            TopicPattern = a.TopicPattern,
-            AclType = a.AclType,
-            Allow = a.Allow,
-            Priority = a.Priority,
-        };
+    private Variant TemplateVariant(RoleTemplateKind kind) =>
+        _template == kind ? Variant.Filled : Variant.Outlined;
 
-    private void AddAcl() => _acls.Add(new AclEntry { TopicPattern = "#", AclType = AclType.Publish, Allow = true });
-
-    private void RemoveAcl(int index)
+    private void ApplyTemplate(RoleTemplateKind kind)
     {
-        if (index >= 0 && index < _acls.Count)
+        _template = kind;
+        switch (kind)
         {
-            _acls.RemoveAt(index);
+            case RoleTemplateKind.FullAccess:
+                _rows = new List<AclPermissionRow>
+                {
+                    new()
+                    {
+                        TopicPattern = "#",
+                        CanPublish = true,
+                        CanSubscribe = true,
+                        Allow = true,
+                        Priority = 0,
+                    },
+                };
+                break;
+            case RoleTemplateKind.ReadOnly:
+                _rows = new List<AclPermissionRow>
+                {
+                    new()
+                    {
+                        TopicPattern = "#",
+                        CanPublish = false,
+                        CanSubscribe = true,
+                        Allow = true,
+                        Priority = 0,
+                    },
+                };
+                break;
+            case RoleTemplateKind.TopicScoped:
+                ApplyTopicScopedFromPrefix();
+                break;
+            case RoleTemplateKind.Custom:
+                _rows = new List<AclPermissionRow>();
+                break;
+        }
+    }
+
+    private void OnTopicPrefixBlur()
+    {
+        if (_template == RoleTemplateKind.TopicScoped)
+        {
+            ApplyTopicScopedFromPrefix();
+        }
+    }
+
+    private void ApplyTopicScopedFromPrefix()
+    {
+        var topic = FormatTopicPrefix(_topicPrefix);
+        _rows = new List<AclPermissionRow>
+        {
+            new()
+            {
+                TopicPattern = topic,
+                CanPublish = true,
+                CanSubscribe = true,
+                Allow = true,
+                Priority = 0,
+            },
+        };
+    }
+
+    private static string FormatTopicPrefix(string prefix)
+    {
+        var p = prefix.Trim().TrimEnd('/');
+        if (string.IsNullOrEmpty(p))
+        {
+            return "#";
+        }
+
+        return p + "/#";
+    }
+
+    private void AddRow()
+    {
+        _rows.Add(new AclPermissionRow
+        {
+            TopicPattern = "#",
+            CanPublish = true,
+            CanSubscribe = true,
+            Allow = true,
+            Priority = 0,
+        });
+        _template = RoleTemplateKind.Custom;
+    }
+
+    private void RemoveRow(int index)
+    {
+        if (index >= 0 && index < _rows.Count)
+        {
+            _rows.RemoveAt(index);
+        }
+    }
+
+    private void OnPublishChanged(int idx, bool v)
+    {
+        if (idx < 0 || idx >= _rows.Count)
+        {
+            return;
+        }
+
+        _rows[idx].CanPublish = v;
+    }
+
+    private void OnSubscribeChanged(int idx, bool v)
+    {
+        if (idx < 0 || idx >= _rows.Count)
+        {
+            return;
+        }
+
+        _rows[idx].CanSubscribe = v;
+    }
+
+    private void OnAllowChanged(int idx, bool v)
+    {
+        if (idx < 0 || idx >= _rows.Count)
+        {
+            return;
+        }
+
+        var row = _rows[idx];
+        row.Allow = v;
+        if (v && row.Priority == 100)
+        {
+            row.Priority = 0;
+        }
+        else if (!v && row.Priority == 0)
+        {
+            row.Priority = 100;
         }
     }
 
@@ -102,14 +301,41 @@
 
     private async Task SaveAsync()
     {
+        if (string.IsNullOrWhiteSpace(_name))
+        {
+            Snackbar.Add("Role name is required.", Severity.Warning);
+            return;
+        }
+
+        if (_rows.Count == 0)
+        {
+            Snackbar.Add("Add at least one permission row.", Severity.Warning);
+            return;
+        }
+
+        foreach (var row in _rows)
+        {
+            if (string.IsNullOrWhiteSpace(row.TopicPattern))
+            {
+                Snackbar.Add("Each permission needs a topic pattern.", Severity.Warning);
+                return;
+            }
+
+            if (!row.CanPublish && !row.CanSubscribe)
+            {
+                Snackbar.Add("Each permission must allow publish and/or subscribe.", Severity.Warning);
+                return;
+            }
+        }
+
         _saving = true;
         try
         {
             if (IsEdit)
             {
-                var newExpanded = ExpandAclFlat(_acls);
+                var newFlat = _rows.SelectMany(r => r.ToAclEntries()).ToList();
                 var oldKeys = _originalExpanded.Select(AclSignature).ToHashSet(StringComparer.Ordinal);
-                var newKeys = newExpanded.Select(AclSignature).ToHashSet(StringComparer.Ordinal);
+                var newKeys = newFlat.Select(AclSignature).ToHashSet(StringComparer.Ordinal);
 
                 await BrokerGatewayHelper.WithGatewayAsync(GatewayFactory, BrokerCtx.Selected, async gw =>
                 {
@@ -121,7 +347,7 @@
                         }
                     }
 
-                    foreach (var a in newExpanded)
+                    foreach (var a in newFlat)
                     {
                         if (!oldKeys.Contains(AclSignature(a)))
                         {
@@ -132,8 +358,9 @@
             }
             else
             {
+                var flat = _rows.SelectMany(r => r.ToAclEntries()).ToList();
                 await BrokerGatewayHelper.WithGatewayAsync(GatewayFactory, BrokerCtx.Selected, async gw =>
-                    await gw.CreateRoleAsync(_name, _description, _acls));
+                    await gw.CreateRoleAsync(_name, _description, flat));
             }
 
             MudDialog.Close(DialogResult.Ok(true));
@@ -150,20 +377,4 @@
 
     private static string AclSignature(AclEntry a) =>
         $"{a.AclType}:{a.TopicPattern}:{a.Priority}:{a.Allow}";
-
-    private static IEnumerable<AclEntry> ExpandAclFlat(IReadOnlyList<AclEntry> acls)
-    {
-        foreach (var a in acls)
-        {
-            if (a.AclType == AclType.PublishSubscribe)
-            {
-                yield return new AclEntry { TopicPattern = a.TopicPattern, AclType = AclType.Publish, Allow = a.Allow, Priority = a.Priority };
-                yield return new AclEntry { TopicPattern = a.TopicPattern, AclType = AclType.Subscribe, Allow = a.Allow, Priority = a.Priority };
-            }
-            else
-            {
-                yield return CloneAcl(a);
-            }
-        }
-    }
 }

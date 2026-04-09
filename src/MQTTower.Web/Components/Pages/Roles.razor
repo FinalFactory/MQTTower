@@ -118,7 +118,7 @@ else
     private async Task OpenCreateAsync()
     {
         var p = new DialogParameters<RoleEditDialog> { { x => x.EditRoleName, null } };
-        var d = (await DialogService.ShowAsync<RoleEditDialog>("New role", p).ConfigureAwait(false))!;
+        var d = (await DialogService.ShowAsync<RoleEditDialog>("New role", p, new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true }).ConfigureAwait(false))!;
         var r = (await d.Result!.ConfigureAwait(false))!;
         if (!r.Canceled)
         {
@@ -129,7 +129,7 @@ else
     private async Task OpenEditAsync(string name)
     {
         var p = new DialogParameters<RoleEditDialog> { { x => x.EditRoleName, name } };
-        var d = (await DialogService.ShowAsync<RoleEditDialog>($"Edit {name}", p).ConfigureAwait(false))!;
+        var d = (await DialogService.ShowAsync<RoleEditDialog>($"Edit {name}", p, new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true }).ConfigureAwait(false))!;
         var r = (await d.Result!.ConfigureAwait(false))!;
         if (!r.Canceled)
         {
