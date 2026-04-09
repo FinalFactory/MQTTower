@@ -62,7 +62,7 @@
                     GatewayFactory,
                     BrokerCtx.Selected,
                     gw => gw.GetRoleAsync(EditRoleName!),
-                    new MqttRole { Name = EditRoleName! }).ConfigureAwait(false);
+                    new MqttRole { Name = EditRoleName! });
                 _name = role.Name;
                 _description = role.Description ?? string.Empty;
                 _acls = role.Acls.Count > 0
@@ -117,7 +117,7 @@
                     {
                         if (!newKeys.Contains(AclSignature(a)))
                         {
-                            await gw.RemoveRoleAclAsync(_name, a).ConfigureAwait(false);
+                            await gw.RemoveRoleAclAsync(_name, a);
                         }
                     }
 
@@ -125,15 +125,15 @@
                     {
                         if (!oldKeys.Contains(AclSignature(a)))
                         {
-                            await gw.AddRoleAclAsync(_name, a).ConfigureAwait(false);
+                            await gw.AddRoleAclAsync(_name, a);
                         }
                     }
-                }).ConfigureAwait(false);
+                });
             }
             else
             {
                 await BrokerGatewayHelper.WithGatewayAsync(GatewayFactory, BrokerCtx.Selected, async gw =>
-                    await gw.CreateRoleAsync(_name, _description, _acls)).ConfigureAwait(false);
+                    await gw.CreateRoleAsync(_name, _description, _acls));
             }
 
             MudDialog.Close(DialogResult.Ok(true));

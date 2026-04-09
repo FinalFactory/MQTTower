@@ -55,9 +55,9 @@
     {
         try
         {
-            var roles = await BrokerGatewayHelper.WithGatewayAsync(GatewayFactory, BrokerCtx.Selected, gw => gw.ListRolesAsync(), Array.Empty<MqttRole>()).ConfigureAwait(false);
+            var roles = await BrokerGatewayHelper.WithGatewayAsync(GatewayFactory, BrokerCtx.Selected, gw => gw.ListRolesAsync(), Array.Empty<MqttRole>());
             _allRoleNames = roles.Select(r => r.Name).OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
-            var groups = await BrokerGatewayHelper.WithGatewayAsync(GatewayFactory, BrokerCtx.Selected, gw => gw.ListGroupsAsync(), Array.Empty<MqttGroup>()).ConfigureAwait(false);
+            var groups = await BrokerGatewayHelper.WithGatewayAsync(GatewayFactory, BrokerCtx.Selected, gw => gw.ListGroupsAsync(), Array.Empty<MqttGroup>());
             _allGroupNames = groups.Select(g => g.Name).OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
 
             if (IsEdit)
@@ -66,7 +66,7 @@
                     GatewayFactory,
                     BrokerCtx.Selected,
                     gw => gw.GetClientAsync(EditUsername!),
-                    new MqttClientInfo { Username = EditUsername! }).ConfigureAwait(false);
+                    new MqttClientInfo { Username = EditUsername! });
                 _username = client.Username;
                 _selectedRoles.Clear();
                 foreach (var r in client.Roles)
@@ -133,42 +133,42 @@
                 {
                     if (!string.IsNullOrWhiteSpace(_password))
                     {
-                        await gw.SetClientPasswordAsync(_username, _password).ConfigureAwait(false);
+                        await gw.SetClientPasswordAsync(_username, _password);
                     }
 
                     var desiredRoles = new HashSet<string>(_selectedRoles);
                     var desiredGroups = new HashSet<string>(_selectedGroups);
-                    var current = await gw.GetClientAsync(_username).ConfigureAwait(false);
+                    var current = await gw.GetClientAsync(_username);
                     var curRoles = new HashSet<string>(current.Roles, StringComparer.Ordinal);
                     var curGroups = new HashSet<string>(current.Groups, StringComparer.Ordinal);
 
                     foreach (var r in desiredRoles.Where(x => !curRoles.Contains(x)))
                     {
-                        await gw.AddClientRoleAsync(_username, r).ConfigureAwait(false);
+                        await gw.AddClientRoleAsync(_username, r);
                     }
 
                     foreach (var r in curRoles.Where(x => !desiredRoles.Contains(x)))
                     {
-                        await gw.RemoveClientRoleAsync(_username, r).ConfigureAwait(false);
+                        await gw.RemoveClientRoleAsync(_username, r);
                     }
 
                     foreach (var g in desiredGroups.Where(x => !curGroups.Contains(x)))
                     {
-                        await gw.AddGroupClientAsync(g, _username).ConfigureAwait(false);
+                        await gw.AddGroupClientAsync(g, _username);
                     }
 
                     foreach (var g in curGroups.Where(x => !desiredGroups.Contains(x)))
                     {
-                        await gw.RemoveGroupClientAsync(g, _username).ConfigureAwait(false);
+                        await gw.RemoveGroupClientAsync(g, _username);
                     }
-                }).ConfigureAwait(false);
+                });
             }
             else
             {
                 var roles = _selectedRoles.ToList();
                 var groups = _selectedGroups.ToList();
                 await BrokerGatewayHelper.WithGatewayAsync(GatewayFactory, BrokerCtx.Selected, async gw =>
-                    await gw.CreateClientAsync(_username, _password, roles, groups)).ConfigureAwait(false);
+                    await gw.CreateClientAsync(_username, _password, roles, groups));
             }
 
             MudDialog.Close(DialogResult.Ok(true));

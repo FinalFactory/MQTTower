@@ -56,9 +56,9 @@
     {
         try
         {
-            var roles = await BrokerGatewayHelper.WithGatewayAsync(GatewayFactory, BrokerCtx.Selected, gw => gw.ListRolesAsync(), Array.Empty<MqttRole>()).ConfigureAwait(false);
+            var roles = await BrokerGatewayHelper.WithGatewayAsync(GatewayFactory, BrokerCtx.Selected, gw => gw.ListRolesAsync(), Array.Empty<MqttRole>());
             _allRoleNames = roles.Select(r => r.Name).OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
-            var clients = await BrokerGatewayHelper.WithGatewayAsync(GatewayFactory, BrokerCtx.Selected, gw => gw.ListClientsAsync(), Array.Empty<MqttClientInfo>()).ConfigureAwait(false);
+            var clients = await BrokerGatewayHelper.WithGatewayAsync(GatewayFactory, BrokerCtx.Selected, gw => gw.ListClientsAsync(), Array.Empty<MqttClientInfo>());
             _allClientNames = clients.Select(c => c.Username).OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
 
             if (IsEdit)
@@ -67,7 +67,7 @@
                     GatewayFactory,
                     BrokerCtx.Selected,
                     gw => gw.GetGroupAsync(EditGroupName!),
-                    new MqttGroup { Name = EditGroupName! }).ConfigureAwait(false);
+                    new MqttGroup { Name = EditGroupName! });
                 _name = g.Name;
                 _description = g.Description ?? string.Empty;
                 _selectedRoles.Clear();
@@ -142,31 +142,31 @@
                 {
                     foreach (var r in _selectedRoles.Where(x => !_originalRoles.Contains(x)))
                     {
-                        await gw.AddGroupRoleAsync(_name, r).ConfigureAwait(false);
+                        await gw.AddGroupRoleAsync(_name, r);
                     }
 
                     foreach (var r in _originalRoles.Where(x => !_selectedRoles.Contains(x)))
                     {
-                        await gw.RemoveGroupRoleAsync(_name, r).ConfigureAwait(false);
+                        await gw.RemoveGroupRoleAsync(_name, r);
                     }
 
                     foreach (var c in _selectedClients.Where(x => !_originalClients.Contains(x)))
                     {
-                        await gw.AddGroupClientAsync(_name, c).ConfigureAwait(false);
+                        await gw.AddGroupClientAsync(_name, c);
                     }
 
                     foreach (var c in _originalClients.Where(x => !_selectedClients.Contains(x)))
                     {
-                        await gw.RemoveGroupClientAsync(_name, c).ConfigureAwait(false);
+                        await gw.RemoveGroupClientAsync(_name, c);
                     }
-                }).ConfigureAwait(false);
+                });
             }
             else
             {
                 var roles = _selectedRoles.ToList();
                 var clients = _selectedClients.ToList();
                 await BrokerGatewayHelper.WithGatewayAsync(GatewayFactory, BrokerCtx.Selected, async gw =>
-                    await gw.CreateGroupAsync(_name, _description, roles, clients)).ConfigureAwait(false);
+                    await gw.CreateGroupAsync(_name, _description, roles, clients));
             }
 
             MudDialog.Close(DialogResult.Ok(true));

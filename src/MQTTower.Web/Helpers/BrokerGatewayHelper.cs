@@ -87,6 +87,7 @@ public static class BrokerGatewayHelper
         var gw = factory.Create(broker);
         try
         {
+            // Do not use ConfigureAwait(false): Blazor components need the renderer sync context for UI updates.
             await action(gw);
         }
         finally

@@ -62,6 +62,17 @@ systemctl_enable_now_best_effort() {
   return 1
 }
 
+# `systemctl enable --now` does not restart an already-active unit, so new DLLs stay
+# loaded in memory until restart. After deploy/re-run, try-restart running services.
+systemctl_try_restart_if_unit_exists() {
+  local svc="$1"
+  systemctl daemon-reload 2>/dev/null || true
+  if systemctl cat "${svc}.service" >/dev/null 2>&1; then
+    msg_info "Restarting ${svc} if running so updated binaries are loaded."
+    systemctl try-restart "${svc}" 2>/dev/null || msg_warn "systemctl try-restart ${svc} failed (check journalctl -xeu ${svc})"
+  fi
+}
+
 # On re-runs, read the actual web port from the existing env so agent DashboardUrl stays in sync.
 detect_existing_web_port() {
   local f="/etc/mqttower/environment"
@@ -389,8 +400,10 @@ install_broker_stack() {
   write_agent_env
   write_agent_systemd
 
+  systemctl daemon-reload 2>/dev/null || true
   systemctl_enable_now_best_effort mosquitto
   systemctl_enable_now_best_effort mqttower-agent
+  systemctl_try_restart_if_unit_exists mqttower-agent
 }
 
 all_dashboard_env_preset() {
@@ -507,6 +520,7 @@ install_dashboard_stack() {
   write_web_systemd
   systemctl daemon-reload 2>/dev/null || true
   systemctl_enable_now_best_effort mqttower
+  systemctl_try_restart_if_unit_exists mqttower
 }
 
 install_fullstack() {
@@ -554,6 +568,8 @@ install_fullstack() {
   systemctl_enable_now_best_effort mosquitto
   systemctl_enable_now_best_effort mqttower-agent
   systemctl_enable_now_best_effort mqttower
+  systemctl_try_restart_if_unit_exists mqttower-agent
+  systemctl_try_restart_if_unit_exists mqttower
 }
 
 write_mqttower_update_command() {
