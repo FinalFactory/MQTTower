@@ -308,6 +308,12 @@ api.MapGet("/dynsec/clients", async (IDynSecService d, CancellationToken ct) =>
     return Results.Ok(list.ToList());
 });
 
+api.MapGet("/dynsec/clients/{username}", async (string username, IDynSecService d, CancellationToken ct) =>
+{
+    var c = await d.GetClientAsync(username, ct).ConfigureAwait(false);
+    return Results.Ok(c);
+});
+
 api.MapPost("/dynsec/clients", async (CreateClientBody b, IDynSecService d, CancellationToken ct) =>
 {
     await d.CreateClientAsync(b.Username, b.Password, b.Roles, b.Groups, ct).ConfigureAwait(false);
@@ -326,10 +332,46 @@ api.MapPut("/dynsec/clients/{username}/enabled", async (string username, SetEnab
     return Results.NoContent();
 });
 
+api.MapPut("/dynsec/clients/{username}/password", async (string username, SetPasswordBody b, IDynSecService d, CancellationToken ct) =>
+{
+    await d.SetClientPasswordAsync(username, b.Password, ct).ConfigureAwait(false);
+    return Results.NoContent();
+});
+
+api.MapPut("/dynsec/clients/{username}/roles/{rolename}", async (string username, string rolename, PriorityBody? b, IDynSecService d, CancellationToken ct) =>
+{
+    await d.AddClientRoleAsync(username, rolename, b?.Priority ?? -1, ct).ConfigureAwait(false);
+    return Results.NoContent();
+});
+
+api.MapDelete("/dynsec/clients/{username}/roles/{rolename}", async (string username, string rolename, IDynSecService d, CancellationToken ct) =>
+{
+    await d.RemoveClientRoleAsync(username, rolename, ct).ConfigureAwait(false);
+    return Results.NoContent();
+});
+
+api.MapPut("/dynsec/clients/{username}/groups/{groupname}", async (string username, string groupname, PriorityBody? b, IDynSecService d, CancellationToken ct) =>
+{
+    await d.AddGroupClientAsync(groupname, username, b?.Priority ?? -1, ct).ConfigureAwait(false);
+    return Results.NoContent();
+});
+
+api.MapDelete("/dynsec/clients/{username}/groups/{groupname}", async (string username, string groupname, IDynSecService d, CancellationToken ct) =>
+{
+    await d.RemoveGroupClientAsync(groupname, username, ct).ConfigureAwait(false);
+    return Results.NoContent();
+});
+
 api.MapGet("/dynsec/roles", async (IDynSecService d, CancellationToken ct) =>
 {
     var list = await d.ListRolesAsync(ct).ConfigureAwait(false);
     return Results.Ok(list.ToList());
+});
+
+api.MapGet("/dynsec/roles/{name}", async (string name, IDynSecService d, CancellationToken ct) =>
+{
+    var role = await d.GetRoleAsync(name, ct).ConfigureAwait(false);
+    return Results.Ok(role);
 });
 
 api.MapPost("/dynsec/roles", async (CreateRoleBody b, IDynSecService d, CancellationToken ct) =>
@@ -345,10 +387,28 @@ api.MapDelete("/dynsec/roles/{name}", async (string name, IDynSecService d, Canc
     return Results.NoContent();
 });
 
+api.MapPost("/dynsec/roles/{name}/acls", async (string name, AclEntry acl, IDynSecService d, CancellationToken ct) =>
+{
+    await d.AddRoleAclAsync(name, acl, ct).ConfigureAwait(false);
+    return Results.NoContent();
+});
+
+api.MapPost("/dynsec/roles/{name}/acls/remove", async (string name, AclEntry acl, IDynSecService d, CancellationToken ct) =>
+{
+    await d.RemoveRoleAclAsync(name, acl, ct).ConfigureAwait(false);
+    return Results.NoContent();
+});
+
 api.MapGet("/dynsec/groups", async (IDynSecService d, CancellationToken ct) =>
 {
     var list = await d.ListGroupsAsync(ct).ConfigureAwait(false);
     return Results.Ok(list.ToList());
+});
+
+api.MapGet("/dynsec/groups/{name}", async (string name, IDynSecService d, CancellationToken ct) =>
+{
+    var g = await d.GetGroupAsync(name, ct).ConfigureAwait(false);
+    return Results.Ok(g);
 });
 
 api.MapPost("/dynsec/groups", async (CreateGroupBody b, IDynSecService d, CancellationToken ct) =>
@@ -362,6 +422,18 @@ api.MapPost("/dynsec/groups", async (CreateGroupBody b, IDynSecService d, Cancel
 api.MapDelete("/dynsec/groups/{name}", async (string name, IDynSecService d, CancellationToken ct) =>
 {
     await d.DeleteGroupAsync(name, ct).ConfigureAwait(false);
+    return Results.NoContent();
+});
+
+api.MapPut("/dynsec/groups/{groupname}/roles/{rolename}", async (string groupname, string rolename, PriorityBody? b, IDynSecService d, CancellationToken ct) =>
+{
+    await d.AddGroupRoleAsync(groupname, rolename, b?.Priority ?? -1, ct).ConfigureAwait(false);
+    return Results.NoContent();
+});
+
+api.MapDelete("/dynsec/groups/{groupname}/roles/{rolename}", async (string groupname, string rolename, IDynSecService d, CancellationToken ct) =>
+{
+    await d.RemoveGroupRoleAsync(groupname, rolename, ct).ConfigureAwait(false);
     return Results.NoContent();
 });
 
@@ -545,6 +617,16 @@ internal sealed class CreateClientBody
 internal sealed class SetEnabledBody
 {
     public bool Enabled { get; set; }
+}
+
+internal sealed class SetPasswordBody
+{
+    public string Password { get; set; } = string.Empty;
+}
+
+internal sealed class PriorityBody
+{
+    public int Priority { get; set; } = -1;
 }
 
 internal sealed class CreateRoleBody

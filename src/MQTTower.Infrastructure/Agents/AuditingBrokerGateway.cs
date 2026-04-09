@@ -61,6 +61,9 @@ public sealed class AuditingBrokerGateway : IBrokerGateway, IDisposable
     public Task<IReadOnlyList<MqttClientInfo>> ListClientsAsync(CancellationToken cancellationToken = default) =>
         RunAsync("ListClients", () => _inner.ListClientsAsync(cancellationToken));
 
+    public Task<MqttClientInfo> GetClientAsync(string username, CancellationToken cancellationToken = default) =>
+        RunAsync("GetClient", () => _inner.GetClientAsync(username, cancellationToken));
+
     public Task CreateClientAsync(string username, string password, IReadOnlyList<string>? roles, IReadOnlyList<string>? groups, CancellationToken cancellationToken = default) =>
         RunAsync("CreateClient", () => _inner.CreateClientAsync(username, password, roles, groups, cancellationToken));
 
@@ -70,8 +73,26 @@ public sealed class AuditingBrokerGateway : IBrokerGateway, IDisposable
     public Task SetClientEnabledAsync(string username, bool enabled, CancellationToken cancellationToken = default) =>
         RunAsync("SetClientEnabled", () => _inner.SetClientEnabledAsync(username, enabled, cancellationToken));
 
+    public Task SetClientPasswordAsync(string username, string password, CancellationToken cancellationToken = default) =>
+        RunAsync("SetClientPassword", () => _inner.SetClientPasswordAsync(username, password, cancellationToken));
+
+    public Task AddClientRoleAsync(string username, string rolename, int priority = -1, CancellationToken cancellationToken = default) =>
+        RunAsync("AddClientRole", () => _inner.AddClientRoleAsync(username, rolename, priority, cancellationToken));
+
+    public Task RemoveClientRoleAsync(string username, string rolename, CancellationToken cancellationToken = default) =>
+        RunAsync("RemoveClientRole", () => _inner.RemoveClientRoleAsync(username, rolename, cancellationToken));
+
+    public Task AddGroupClientAsync(string groupname, string username, int priority = -1, CancellationToken cancellationToken = default) =>
+        RunAsync("AddGroupClient", () => _inner.AddGroupClientAsync(groupname, username, priority, cancellationToken));
+
+    public Task RemoveGroupClientAsync(string groupname, string username, CancellationToken cancellationToken = default) =>
+        RunAsync("RemoveGroupClient", () => _inner.RemoveGroupClientAsync(groupname, username, cancellationToken));
+
     public Task<IReadOnlyList<MqttRole>> ListRolesAsync(CancellationToken cancellationToken = default) =>
         RunAsync("ListRoles", () => _inner.ListRolesAsync(cancellationToken));
+
+    public Task<MqttRole> GetRoleAsync(string name, CancellationToken cancellationToken = default) =>
+        RunAsync("GetRole", () => _inner.GetRoleAsync(name, cancellationToken));
 
     public Task CreateRoleAsync(string name, string? description, IReadOnlyList<AclEntry> acls, CancellationToken cancellationToken = default) =>
         RunAsync("CreateRole", () => _inner.CreateRoleAsync(name, description, acls, cancellationToken));
@@ -79,14 +100,29 @@ public sealed class AuditingBrokerGateway : IBrokerGateway, IDisposable
     public Task DeleteRoleAsync(string name, CancellationToken cancellationToken = default) =>
         RunAsync("DeleteRole", () => _inner.DeleteRoleAsync(name, cancellationToken));
 
+    public Task AddRoleAclAsync(string rolename, AclEntry acl, CancellationToken cancellationToken = default) =>
+        RunAsync("AddRoleAcl", () => _inner.AddRoleAclAsync(rolename, acl, cancellationToken));
+
+    public Task RemoveRoleAclAsync(string rolename, AclEntry acl, CancellationToken cancellationToken = default) =>
+        RunAsync("RemoveRoleAcl", () => _inner.RemoveRoleAclAsync(rolename, acl, cancellationToken));
+
     public Task<IReadOnlyList<MqttGroup>> ListGroupsAsync(CancellationToken cancellationToken = default) =>
         RunAsync("ListGroups", () => _inner.ListGroupsAsync(cancellationToken));
+
+    public Task<MqttGroup> GetGroupAsync(string name, CancellationToken cancellationToken = default) =>
+        RunAsync("GetGroup", () => _inner.GetGroupAsync(name, cancellationToken));
 
     public Task CreateGroupAsync(string name, string? description, IReadOnlyList<string> roleNames, IReadOnlyList<string> clientUsernames, CancellationToken cancellationToken = default) =>
         RunAsync("CreateGroup", () => _inner.CreateGroupAsync(name, description, roleNames, clientUsernames, cancellationToken));
 
     public Task DeleteGroupAsync(string name, CancellationToken cancellationToken = default) =>
         RunAsync("DeleteGroup", () => _inner.DeleteGroupAsync(name, cancellationToken));
+
+    public Task AddGroupRoleAsync(string groupname, string rolename, int priority = -1, CancellationToken cancellationToken = default) =>
+        RunAsync("AddGroupRole", () => _inner.AddGroupRoleAsync(groupname, rolename, priority, cancellationToken));
+
+    public Task RemoveGroupRoleAsync(string groupname, string rolename, CancellationToken cancellationToken = default) =>
+        RunAsync("RemoveGroupRole", () => _inner.RemoveGroupRoleAsync(groupname, rolename, cancellationToken));
 
     public Task<string> ReadConfigAsync(CancellationToken cancellationToken = default) =>
         RunAsync("ReadConfig", () => _inner.ReadConfigAsync(cancellationToken));

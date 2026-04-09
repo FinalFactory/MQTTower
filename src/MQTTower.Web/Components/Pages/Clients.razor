@@ -34,11 +34,18 @@ else
         </ToolBarContent>
         <HeaderContent>
             <MudTh>Username</MudTh>
+            <MudTh>Roles</MudTh>
             <MudTh>Enabled</MudTh>
             <MudTh Style="text-align:right">Actions</MudTh>
         </HeaderContent>
         <RowTemplate Context="row">
             <MudTd DataLabel="Username">@row.Username</MudTd>
+            <MudTd DataLabel="Roles">
+                @foreach (var rn in row.Roles)
+                {
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Class="mr-1 mb-1">@rn</MudChip>
+                }
+            </MudTd>
             <MudTd DataLabel="Enabled">
                 <AuthorizeView Roles="Admin">
                     <Authorized>
@@ -52,6 +59,7 @@ else
             <MudTd DataLabel="Actions" Style="text-align:right">
                 <AuthorizeView Roles="Admin">
                     <Authorized>
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" aria-label="edit" OnClick="@(() => OpenEditAsync(row.Username))" />
                         <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" aria-label="delete" OnClick="@(() => DeleteAsync(row.Username))" />
                     </Authorized>
                 </AuthorizeView>
@@ -69,7 +77,9 @@ else
     private IEnumerable<MqttClientInfo> FilteredItems =>
         string.IsNullOrWhiteSpace(_search)
             ? _items
-            : _items.Where(x => x.Username.Contains(_search, StringComparison.OrdinalIgnoreCase));
+            : _items.Where(x =>
+                x.Username.Contains(_search, StringComparison.OrdinalIgnoreCase)
+                || x.Roles.Any(r => r.Contains(_search, StringComparison.OrdinalIgnoreCase)));
 
     protected override async Task OnInitializedAsync()
     {
@@ -121,7 +131,19 @@ else
 
     private async Task OpenCreateAsync()
     {
-        var d = (await DialogService.ShowAsync<ClientEditDialog>("New client").ConfigureAwait(false))!;
+        var p = new DialogParameters<ClientEditDialog> { { x => x.EditUsername, null } };
+        var d = (await DialogService.ShowAsync<ClientEditDialog>("New client", p).ConfigureAwait(false))!;
+        var r = (await d.Result!.ConfigureAwait(false))!;
+        if (!r.Canceled)
+        {
+            await LoadAsync().ConfigureAwait(false);
+        }
+    }
+
+    private async Task OpenEditAsync(string username)
+    {
+        var p = new DialogParameters<ClientEditDialog> { { x => x.EditUsername, username } };
+        var d = (await DialogService.ShowAsync<ClientEditDialog>($"Edit {username}", p).ConfigureAwait(false))!;
         var r = (await d.Result!.ConfigureAwait(false))!;
         if (!r.Canceled)
         {

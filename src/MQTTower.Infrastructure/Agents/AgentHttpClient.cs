@@ -55,6 +55,14 @@ public sealed class AgentHttpClient : IBrokerGateway, IDisposable
         return await r.Content.ReadFromJsonAsync<List<MqttClientInfo>>(Json, cancellationToken).ConfigureAwait(false) ?? new List<MqttClientInfo>();
     }
 
+    public async Task<MqttClientInfo> GetClientAsync(string username, CancellationToken cancellationToken = default)
+    {
+        var r = await _http.GetAsync($"api/dynsec/clients/{Uri.EscapeDataString(username)}", cancellationToken).ConfigureAwait(false);
+        await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
+        return await r.Content.ReadFromJsonAsync<MqttClientInfo>(Json, cancellationToken).ConfigureAwait(false)
+               ?? new MqttClientInfo { Username = username };
+    }
+
     public async Task CreateClientAsync(string username, string password, IReadOnlyList<string>? roles, IReadOnlyList<string>? groups, CancellationToken cancellationToken = default)
     {
         var body = new CreateClientDto(username, password, roles?.ToList(), groups?.ToList());
@@ -78,11 +86,65 @@ public sealed class AgentHttpClient : IBrokerGateway, IDisposable
         await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task SetClientPasswordAsync(string username, string password, CancellationToken cancellationToken = default)
+    {
+        var r = await _http.PutAsJsonAsync(
+            $"api/dynsec/clients/{Uri.EscapeDataString(username)}/password",
+            new SetPasswordDto(password),
+            Json,
+            cancellationToken).ConfigureAwait(false);
+        await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task AddClientRoleAsync(string username, string rolename, int priority = -1, CancellationToken cancellationToken = default)
+    {
+        var r = await _http.PutAsJsonAsync(
+            $"api/dynsec/clients/{Uri.EscapeDataString(username)}/roles/{Uri.EscapeDataString(rolename)}",
+            new PriorityDto(priority),
+            Json,
+            cancellationToken).ConfigureAwait(false);
+        await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task RemoveClientRoleAsync(string username, string rolename, CancellationToken cancellationToken = default)
+    {
+        var r = await _http.DeleteAsync(
+            $"api/dynsec/clients/{Uri.EscapeDataString(username)}/roles/{Uri.EscapeDataString(rolename)}",
+            cancellationToken).ConfigureAwait(false);
+        await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task AddGroupClientAsync(string groupname, string username, int priority = -1, CancellationToken cancellationToken = default)
+    {
+        var r = await _http.PutAsJsonAsync(
+            $"api/dynsec/clients/{Uri.EscapeDataString(username)}/groups/{Uri.EscapeDataString(groupname)}",
+            new PriorityDto(priority),
+            Json,
+            cancellationToken).ConfigureAwait(false);
+        await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task RemoveGroupClientAsync(string groupname, string username, CancellationToken cancellationToken = default)
+    {
+        var r = await _http.DeleteAsync(
+            $"api/dynsec/clients/{Uri.EscapeDataString(username)}/groups/{Uri.EscapeDataString(groupname)}",
+            cancellationToken).ConfigureAwait(false);
+        await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<IReadOnlyList<MqttRole>> ListRolesAsync(CancellationToken cancellationToken = default)
     {
         var r = await _http.GetAsync("api/dynsec/roles", cancellationToken).ConfigureAwait(false);
         await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
         return await r.Content.ReadFromJsonAsync<List<MqttRole>>(Json, cancellationToken).ConfigureAwait(false) ?? new List<MqttRole>();
+    }
+
+    public async Task<MqttRole> GetRoleAsync(string name, CancellationToken cancellationToken = default)
+    {
+        var r = await _http.GetAsync($"api/dynsec/roles/{Uri.EscapeDataString(name)}", cancellationToken).ConfigureAwait(false);
+        await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
+        return await r.Content.ReadFromJsonAsync<MqttRole>(Json, cancellationToken).ConfigureAwait(false)
+               ?? new MqttRole { Name = name };
     }
 
     public async Task CreateRoleAsync(string name, string? description, IReadOnlyList<AclEntry> acls, CancellationToken cancellationToken = default)
@@ -98,11 +160,39 @@ public sealed class AgentHttpClient : IBrokerGateway, IDisposable
         await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task AddRoleAclAsync(string rolename, AclEntry acl, CancellationToken cancellationToken = default)
+    {
+        var r = await _http.PostAsJsonAsync(
+            $"api/dynsec/roles/{Uri.EscapeDataString(rolename)}/acls",
+            acl,
+            Json,
+            cancellationToken).ConfigureAwait(false);
+        await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task RemoveRoleAclAsync(string rolename, AclEntry acl, CancellationToken cancellationToken = default)
+    {
+        var r = await _http.PostAsJsonAsync(
+            $"api/dynsec/roles/{Uri.EscapeDataString(rolename)}/acls/remove",
+            acl,
+            Json,
+            cancellationToken).ConfigureAwait(false);
+        await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<IReadOnlyList<MqttGroup>> ListGroupsAsync(CancellationToken cancellationToken = default)
     {
         var r = await _http.GetAsync("api/dynsec/groups", cancellationToken).ConfigureAwait(false);
         await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
         return await r.Content.ReadFromJsonAsync<List<MqttGroup>>(Json, cancellationToken).ConfigureAwait(false) ?? new List<MqttGroup>();
+    }
+
+    public async Task<MqttGroup> GetGroupAsync(string name, CancellationToken cancellationToken = default)
+    {
+        var r = await _http.GetAsync($"api/dynsec/groups/{Uri.EscapeDataString(name)}", cancellationToken).ConfigureAwait(false);
+        await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
+        return await r.Content.ReadFromJsonAsync<MqttGroup>(Json, cancellationToken).ConfigureAwait(false)
+               ?? new MqttGroup { Name = name };
     }
 
     public async Task CreateGroupAsync(string name, string? description, IReadOnlyList<string> roleNames, IReadOnlyList<string> clientUsernames, CancellationToken cancellationToken = default)
@@ -115,6 +205,24 @@ public sealed class AgentHttpClient : IBrokerGateway, IDisposable
     public async Task DeleteGroupAsync(string name, CancellationToken cancellationToken = default)
     {
         var r = await _http.DeleteAsync($"api/dynsec/groups/{Uri.EscapeDataString(name)}", cancellationToken).ConfigureAwait(false);
+        await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task AddGroupRoleAsync(string groupname, string rolename, int priority = -1, CancellationToken cancellationToken = default)
+    {
+        var r = await _http.PutAsJsonAsync(
+            $"api/dynsec/groups/{Uri.EscapeDataString(groupname)}/roles/{Uri.EscapeDataString(rolename)}",
+            new PriorityDto(priority),
+            Json,
+            cancellationToken).ConfigureAwait(false);
+        await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task RemoveGroupRoleAsync(string groupname, string rolename, CancellationToken cancellationToken = default)
+    {
+        var r = await _http.DeleteAsync(
+            $"api/dynsec/groups/{Uri.EscapeDataString(groupname)}/roles/{Uri.EscapeDataString(rolename)}",
+            cancellationToken).ConfigureAwait(false);
         await EnsureSuccessAsync(r, cancellationToken).ConfigureAwait(false);
     }
 
@@ -329,6 +437,8 @@ public sealed class AgentHttpClient : IBrokerGateway, IDisposable
 
     private sealed record SetApiKeyDto(string ApiKey);
     private sealed record EnabledDto(bool Enabled);
+    private sealed record SetPasswordDto(string Password);
+    private sealed record PriorityDto(int Priority);
     private sealed record PublishDto(string Topic, string? Payload, int Qos, bool Retain);
     private sealed record CreateClientDto(string Username, string Password, List<string>? Roles, List<string>? Groups);
     private sealed record CreateRoleDto(string Name, string? Description, List<AclEntry> Acls);

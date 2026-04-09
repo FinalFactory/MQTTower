@@ -132,4 +132,79 @@ public sealed class DynSecIntegrationTests(MosquittoFixture fixture)
         }
         await dyn.DeleteClientAsync(name);
     }
+
+    [Fact]
+    public async Task GetClient_returns_admin_with_roles()
+    {
+        await using var mqtt = fixture.CreateConnection();
+        await mqtt.StartAsync();
+        var dyn = CreateDynSec(mqtt);
+        var c = await dyn.GetClientAsync(MosquittoFixture.AdminUsername);
+        c.Username.Should().Be(MosquittoFixture.AdminUsername);
+        c.Roles.Should().NotBeEmpty();
+    }
+
+    [Fact]
+    public async Task Add_remove_client_role_roundtrip()
+    {
+        await using var mqtt = fixture.CreateConnection();
+        await mqtt.StartAsync();
+        var dyn = CreateDynSec(mqtt);
+        var role = $"rt_{Guid.NewGuid():N}"[..16];
+        await dyn.CreateRoleAsync(
+            role,
+            "t",
+            new[]
+            {
+                new AclEntry { TopicPattern = "#", AclType = AclType.PublishSubscribe, Allow = true },
+            });
+        var user = $"ut_{Guid.NewGuid():N}"[..16];
+        await dyn.CreateClientAsync(user, "pw-12345", Array.Empty<string>(), Array.Empty<string>());
+        await dyn.AddClientRoleAsync(user, role);
+        (await dyn.GetClientAsync(user)).Roles.Should().Contain(role);
+        await dyn.RemoveClientRoleAsync(user, role);
+        (await dyn.GetClientAsync(user)).Roles.Should().NotContain(role);
+        await dyn.DeleteClientAsync(user);
+        await dyn.DeleteRoleAsync(role);
+    }
+
+    [Fact]
+    public async Task GetRole_and_GetGroup_return_details()
+    {
+        await using var mqtt = fixture.CreateConnection();
+        await mqtt.StartAsync();
+        var dyn = CreateDynSec(mqtt);
+        var role = $"gr_{Guid.NewGuid():N}"[..16];
+        await dyn.CreateRoleAsync(
+            role,
+            "d",
+            new[] { new AclEntry { TopicPattern = "x/#", AclType = AclType.Subscribe, Allow = true, Priority = 0 } });
+        var r = await dyn.GetRoleAsync(role);
+        r.Name.Should().Be(role);
+        r.Acls.Should().NotBeEmpty();
+        var g = $"gg_{Guid.NewGuid():N}"[..16];
+        await dyn.CreateGroupAsync(g, "gd", Array.Empty<string>(), Array.Empty<string>());
+        var gg = await dyn.GetGroupAsync(g);
+        gg.Name.Should().Be(g);
+        await dyn.DeleteGroupAsync(g);
+        await dyn.DeleteRoleAsync(role);
+    }
+
+    [Fact]
+    public async Task Add_remove_group_client_roundtrip()
+    {
+        await using var mqtt = fixture.CreateConnection();
+        await mqtt.StartAsync();
+        var dyn = CreateDynSec(mqtt);
+        var g = $"gc_{Guid.NewGuid():N}"[..16];
+        await dyn.CreateGroupAsync(g, "g", Array.Empty<string>(), Array.Empty<string>());
+        var user = $"ugc_{Guid.NewGuid():N}"[..15];
+        await dyn.CreateClientAsync(user, "pw-12345", Array.Empty<string>(), Array.Empty<string>());
+        await dyn.AddGroupClientAsync(g, user);
+        (await dyn.GetGroupAsync(g)).ClientUsernames.Should().Contain(user);
+        await dyn.RemoveGroupClientAsync(g, user);
+        (await dyn.GetGroupAsync(g)).ClientUsernames.Should().NotContain(user);
+        await dyn.DeleteClientAsync(user);
+        await dyn.DeleteGroupAsync(g);
+    }
 }

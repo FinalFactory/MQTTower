@@ -34,13 +34,20 @@ else
         </ToolBarContent>
         <HeaderContent>
             <MudTh>Name</MudTh>
+            <MudTh>Description</MudTh>
+            <MudTh>Roles</MudTh>
+            <MudTh>Clients</MudTh>
             <MudTh Style="text-align:right">Actions</MudTh>
         </HeaderContent>
         <RowTemplate Context="row">
             <MudTd DataLabel="Name">@row.Name</MudTd>
+            <MudTd DataLabel="Description">@(row.Description ?? "—")</MudTd>
+            <MudTd DataLabel="Roles">@row.RoleNames.Count</MudTd>
+            <MudTd DataLabel="Clients">@row.ClientUsernames.Count</MudTd>
             <MudTd DataLabel="Actions" Style="text-align:right">
                 <AuthorizeView Roles="Admin">
                     <Authorized>
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" aria-label="edit" OnClick="@(() => OpenEditAsync(row.Name))" />
                         <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" aria-label="delete" OnClick="@(() => DeleteAsync(row.Name))" />
                     </Authorized>
                 </AuthorizeView>
@@ -58,7 +65,9 @@ else
     private IEnumerable<MqttGroup> FilteredItems =>
         string.IsNullOrWhiteSpace(_search)
             ? _items
-            : _items.Where(x => x.Name.Contains(_search, StringComparison.OrdinalIgnoreCase));
+            : _items.Where(x =>
+                x.Name.Contains(_search, StringComparison.OrdinalIgnoreCase)
+                || (x.Description?.Contains(_search, StringComparison.OrdinalIgnoreCase) ?? false));
 
     protected override async Task OnInitializedAsync()
     {
@@ -110,7 +119,19 @@ else
 
     private async Task OpenCreateAsync()
     {
-        var d = (await DialogService.ShowAsync<GroupEditDialog>("New group").ConfigureAwait(false))!;
+        var p = new DialogParameters<GroupEditDialog> { { x => x.EditGroupName, null } };
+        var d = (await DialogService.ShowAsync<GroupEditDialog>("New group", p).ConfigureAwait(false))!;
+        var r = (await d.Result!.ConfigureAwait(false))!;
+        if (!r.Canceled)
+        {
+            await LoadAsync().ConfigureAwait(false);
+        }
+    }
+
+    private async Task OpenEditAsync(string name)
+    {
+        var p = new DialogParameters<GroupEditDialog> { { x => x.EditGroupName, name } };
+        var d = (await DialogService.ShowAsync<GroupEditDialog>($"Edit {name}", p).ConfigureAwait(false))!;
         var r = (await d.Result!.ConfigureAwait(false))!;
         if (!r.Canceled)
         {

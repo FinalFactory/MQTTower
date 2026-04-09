@@ -1,17 +1,34 @@
 @using MQTTower.Core.Interfaces
 @inject IBrokerGatewayFactory GatewayFactory
 @inject BrokerContext BrokerCtx
+@inject ISnackbar Snackbar
 
 <MudDialog>
     <DialogContent>
-        <MudTextField @bind-Value="_name" Label="Group name" Variant="Variant.Outlined" Class="mb-2" Required="true" />
-        <MudTextField @bind-Value="_description" Label="Description" Variant="Variant.Outlined" Class="mb-2" />
-        <MudTextField @bind-Value="_rolesCsv" Label="Roles (comma-separated)" Variant="Variant.Outlined" Class="mb-2" HelperText="Matches existing role names" />
-        <MudTextField @bind-Value="_clientsCsv" Label="Clients (comma-separated)" Variant="Variant.Outlined" HelperText="Matches MQTT usernames" />
+        @if (_loading)
+        {
+            <MudProgressLinear Indeterminate="true" Class="mb-2" />
+        }
+        <MudTextField @bind-Value="_name" Label="Group name" Variant="Variant.Outlined" Class="mb-2" Required="true" Disabled="@IsEdit" />
+        <MudTextField @bind-Value="_description" Label="Description" Variant="Variant.Outlined" Class="mb-2" Disabled="@IsEdit" HelperText="@(IsEdit ? "Description changes require Mosquitto modifyGroup (not wired)." : null)" />
+        <MudText Typo="Typo.subtitle2" Class="mb-1">Roles</MudText>
+        <MudStack Class="mb-3" Spacing="0">
+            @foreach (var r in _allRoleNames)
+            {
+                <MudCheckBox T="bool" Value="@_selectedRoles.Contains(r)" ValueChanged="@(v => OnRoleToggled(r, v))" Label="@r" Dense="true" Color="Color.Primary" />
+            }
+        </MudStack>
+        <MudText Typo="Typo.subtitle2" Class="mb-1">Clients</MudText>
+        <MudStack Spacing="0">
+            @foreach (var c in _allClientNames)
+            {
+                <MudCheckBox T="bool" Value="@_selectedClients.Contains(c)" ValueChanged="@(v => OnClientToggled(c, v))" Label="@c" Dense="true" Color="Color.Primary" />
+            }
+        </MudStack>
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="Cancel">Cancel</MudButton>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">Create</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync" Disabled="@_saving">@(IsEdit ? "Save" : "Create")</MudButton>
     </DialogActions>
 </MudDialog>
 
@@ -19,22 +36,148 @@
     [CascadingParameter]
     private IMudDialogInstance MudDialog { get; set; } = default!;
 
+    [Parameter]
+    public string? EditGroupName { get; set; }
+
+    private bool IsEdit => !string.IsNullOrEmpty(EditGroupName);
+
     private string _name = string.Empty;
     private string _description = string.Empty;
-    private string _rolesCsv = string.Empty;
-    private string _clientsCsv = string.Empty;
+    private List<string> _allRoleNames = new();
+    private List<string> _allClientNames = new();
+    private readonly HashSet<string> _selectedRoles = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _selectedClients = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _originalRoles = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _originalClients = new(StringComparer.Ordinal);
+    private bool _loading = true;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var roles = await BrokerGatewayHelper.WithGatewayAsync(GatewayFactory, BrokerCtx.Selected, gw => gw.ListRolesAsync(), Array.Empty<MqttRole>()).ConfigureAwait(false);
+            _allRoleNames = roles.Select(r => r.Name).OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
+            var clients = await BrokerGatewayHelper.WithGatewayAsync(GatewayFactory, BrokerCtx.Selected, gw => gw.ListClientsAsync(), Array.Empty<MqttClientInfo>()).ConfigureAwait(false);
+            _allClientNames = clients.Select(c => c.Username).OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
+
+            if (IsEdit)
+            {
+                var g = await BrokerGatewayHelper.WithGatewayAsync(
+                    GatewayFactory,
+                    BrokerCtx.Selected,
+                    gw => gw.GetGroupAsync(EditGroupName!),
+                    new MqttGroup { Name = EditGroupName! }).ConfigureAwait(false);
+                _name = g.Name;
+                _description = g.Description ?? string.Empty;
+                _selectedRoles.Clear();
+                foreach (var r in g.RoleNames)
+                {
+                    _selectedRoles.Add(r);
+                }
+
+                _selectedClients.Clear();
+                foreach (var c in g.ClientUsernames)
+                {
+                    _selectedClients.Add(c);
+                }
+
+                _originalRoles.Clear();
+                foreach (var r in g.RoleNames)
+                {
+                    _originalRoles.Add(r);
+                }
+
+                _originalClients.Clear();
+                foreach (var c in g.ClientUsernames)
+                {
+                    _originalClients.Add(c);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OnRoleToggled(string role, bool on)
+    {
+        if (on)
+        {
+            _selectedRoles.Add(role);
+        }
+        else
+        {
+            _selectedRoles.Remove(role);
+        }
+    }
+
+    private void OnClientToggled(string client, bool on)
+    {
+        if (on)
+        {
+            _selectedClients.Add(client);
+        }
+        else
+        {
+            _selectedClients.Remove(client);
+        }
+    }
 
     private void Cancel() => MudDialog.Cancel();
 
     private async Task SaveAsync()
     {
-        var roles = Split(_rolesCsv);
-        var clients = Split(_clientsCsv);
-        await BrokerGatewayHelper.WithGatewayAsync(GatewayFactory, BrokerCtx.Selected, async gw =>
-            await gw.CreateGroupAsync(_name, _description, roles, clients));
-        MudDialog.Close(DialogResult.Ok(true));
-    }
+        _saving = true;
+        try
+        {
+            if (IsEdit)
+            {
+                await BrokerGatewayHelper.WithGatewayAsync(GatewayFactory, BrokerCtx.Selected, async gw =>
+                {
+                    foreach (var r in _selectedRoles.Where(x => !_originalRoles.Contains(x)))
+                    {
+                        await gw.AddGroupRoleAsync(_name, r).ConfigureAwait(false);
+                    }
 
-    private static List<string> Split(string csv) =>
-        csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Where(s => s.Length > 0).ToList();
+                    foreach (var r in _originalRoles.Where(x => !_selectedRoles.Contains(x)))
+                    {
+                        await gw.RemoveGroupRoleAsync(_name, r).ConfigureAwait(false);
+                    }
+
+                    foreach (var c in _selectedClients.Where(x => !_originalClients.Contains(x)))
+                    {
+                        await gw.AddGroupClientAsync(_name, c).ConfigureAwait(false);
+                    }
+
+                    foreach (var c in _originalClients.Where(x => !_selectedClients.Contains(x)))
+                    {
+                        await gw.RemoveGroupClientAsync(_name, c).ConfigureAwait(false);
+                    }
+                }).ConfigureAwait(false);
+            }
+            else
+            {
+                var roles = _selectedRoles.ToList();
+                var clients = _selectedClients.ToList();
+                await BrokerGatewayHelper.WithGatewayAsync(GatewayFactory, BrokerCtx.Selected, async gw =>
+                    await gw.CreateGroupAsync(_name, _description, roles, clients)).ConfigureAwait(false);
+            }
+
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
 }
